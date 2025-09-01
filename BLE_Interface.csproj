@@ -1,0 +1,20 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
+
+	<PropertyGroup>
+		<OutputType>WinExe</OutputType>
+		<TargetFramework>net48</TargetFramework>
+		<UseWPF>true</UseWPF>
+		<RootNamespace>BLE_Interface</RootNamespace>
+		<AssemblyName>BLE_Interface</AssemblyName>
+		<LangVersion>10.0</LangVersion>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="HelixToolkit.Wpf" Version="2.27.0" />
+		<PackageReference Include="LiveChartsCore" Version="2.0.0-rc5.4" />
+		<PackageReference Include="LiveChartsCore.SkiaSharpView" Version="2.0.0-rc5.4" />
+		<PackageReference Include="LiveChartsCore.SkiaSharpView.WPF" Version="2.0.0-rc5.4" />
+		<PackageReference Include="Microsoft.Windows.SDK.Contracts" Version="10.0.26100.3916" />
+	</ItemGroup>
+
+</Project>
