@@ -1,0 +1,24 @@
+name: CodeQL
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    - cron: '30 1 * * 0'   # weekly
+
+jobs:
+  analyze:
+    runs-on: windows-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: csharp
+      # If autobuild fails for .NET Framework, replace the next two steps with the fallback below.
+      - uses: github/codeql-action/autobuild@v3
+      - uses: github/codeql-action/analyze@v3
