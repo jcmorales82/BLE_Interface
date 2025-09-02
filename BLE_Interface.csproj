@@ -10,7 +10,7 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<PackageReference Include="HelixToolkit.Wpf" Version="2.27.0" />
+		<PackageReference Include="HelixToolkit.Wpf" Version="2.27.3" />
 		<PackageReference Include="LiveChartsCore" Version="2.0.0-rc5.4" />
 		<PackageReference Include="LiveChartsCore.SkiaSharpView" Version="2.0.0-rc5.4" />
 		<PackageReference Include="LiveChartsCore.SkiaSharpView.WPF" Version="2.0.0-rc5.4" />
