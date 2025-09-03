@@ -1,15 +1,16 @@
-﻿using System.Windows;
-using System.Windows.Controls;
+﻿using BLE_Interface.Helpers; // ← Required for OrientationVisualizer
+using BLE_Interface.Services;
 using BLE_Interface.ViewModels;
 using LiveChartsCore;
-using LiveChartsCore.SkiaSharpView;
 using LiveChartsCore.Defaults;
+using LiveChartsCore.SkiaSharpView;
 using LiveChartsCore.SkiaSharpView.Painting;
 using SkiaSharp;
 using System.Collections.ObjectModel;
-using System.Windows.Threading;
-using BLE_Interface.Helpers; // ← Required for OrientationVisualizer
+using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media.Media3D;
+using System.Windows.Threading;
 
 namespace BLE_Interface.Views
 {
@@ -18,6 +19,8 @@ namespace BLE_Interface.Views
         public MainWindowViewModel ViewModel { get; }
 
         private OrientationVisualizer _orientationVisualizer;
+
+        private readonly IBLEClient _ble; // your existing concrete BLE client
 
         public MainWindow()
         {
@@ -35,11 +38,6 @@ namespace BLE_Interface.Views
             {
                 CubeModel.Transform = _orientationVisualizer.Transform;
             }
-        }
-
-        private void tbLog_TextChanged(object sender, TextChangedEventArgs e)
-        {
-            tbLog.ScrollToEnd();
         }
     }
 }

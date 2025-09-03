@@ -1,0 +1,45 @@
+<Window x:Class="BLE_Interface.Views.ScanTestWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Scan Test (Tyme Wear filter)" Height="420" Width="600"
+        WindowStartupLocation="Manual" Top="580" Left="60">
+	<Grid Margin="10">
+		<Grid.RowDefinitions>
+			<RowDefinition Height="Auto"/>
+			<RowDefinition Height="*"/>
+		</Grid.RowDefinitions>
+
+		<!-- Header -->
+		<StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+			<TextBlock VerticalAlignment="Center"
+                       Text="Filtering by Tyme Wear Service UUID"
+                       FontWeight="SemiBold" Margin="0,0,12,0"/>
+			<Button Content="Start Scan" Click="StartScan_Click" Margin="0,0,8,0" />
+			<Button Content="Stop Scan"  Click="StopScan_Click" />
+		</StackPanel>
+
+		<!-- Devices grid -->
+		<DataGrid Grid.Row="1" x:Name="Grid"
+                  AutoGenerateColumns="False" IsReadOnly="True"
+                  EnableRowVirtualization="True" EnableColumnVirtualization="True">
+			<DataGrid.Columns>
+				<DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*"/>
+				<DataGridTextColumn Header="RSSI" Binding="{Binding Rssi}" Width="80"/>
+				<DataGridTextColumn Header="Battery"
+                                    Binding="{Binding BatteryPercent, StringFormat={}{0}%}"
+                                    Width="80"/>
+
+				<DataGridTemplateColumn Header="Actions" Width="170">
+					<DataGridTemplateColumn.CellTemplate>
+						<DataTemplate>
+							<StackPanel Orientation="Horizontal">
+								<Button Content="Connect" Click="Connect_Click" Margin="0,0,6,0"/>
+								<Button Content="Disconnect" Click="Disconnect_Click"/>
+							</StackPanel>
+						</DataTemplate>
+					</DataGridTemplateColumn.CellTemplate>
+				</DataGridTemplateColumn>
+			</DataGrid.Columns>
+		</DataGrid>
+	</Grid>
+</Window>

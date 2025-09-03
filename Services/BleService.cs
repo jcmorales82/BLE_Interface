@@ -804,7 +804,14 @@ namespace BLE_Interface.Services
             finally { handle.Free(); }
         }
 
-        private void Log(string msg) => LogMessage?.Invoke(msg);
+        private void Log(string msg)
+        {
+            // Send to the bounded + batched global logger (Logs window)
+            BLE_Interface.Services.Logging.Log.Info(msg);
+
+            // Optional: stop notifying the old UI log subscribers so they don’t add to old collections
+            // LogMessage?.Invoke(msg);  // <-- leave commented out
+        }
 
         public void Dispose()
         {

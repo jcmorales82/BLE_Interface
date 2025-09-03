@@ -1,17 +1,22 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Configuration;
-using System.Data;
-using System.Linq;
-using System.Threading.Tasks;
-using System.Windows;
+﻿using System.Windows;
+using BLE_Interface.Views;
 
 namespace BLE_Interface
 {
-    /// <summary>
-    /// Interaction Logic for App.xaml
-    /// </summary>
     public partial class App : Application
     {
+        private LogWindow _logWindow;
+        private ScanTestWindow _scanWindow;
+
+        private void Application_Startup(object sender, StartupEventArgs e)
+        {
+            // Main window is shown via App.xaml StartupUri="Views/MainWindow.xaml"
+
+            _logWindow = new LogWindow();
+            _logWindow.Show();
+
+            _scanWindow = new ScanTestWindow();
+            _scanWindow.Show();
+        }
     }
 }

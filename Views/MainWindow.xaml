@@ -240,13 +240,5 @@
         Width="600" Height="200" Background="Black"/>
 
         <!-- Log Output -->
-        <TextBox x:Name="tbLog"
-                 Text="{Binding Log}"
-                 IsReadOnly="True"
-                 AcceptsReturn="True"
-                 VerticalScrollBarVisibility="Auto"
-                 Canvas.Left="10" Canvas.Top="326"
-                 Width="500" Height="526"
-                 TextChanged="tbLog_TextChanged" HorizontalAlignment="Left" VerticalAlignment="Center"/>
     </Canvas>
 </Window>
