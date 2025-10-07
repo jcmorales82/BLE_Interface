@@ -1,218 +1,258 @@
-﻿using BLE_Interface.Models;
-using BLE_Interface.SensorFusion;  // for MadgwickAHRS
+﻿using BLE_Interface.Controls;
+using BLE_Interface.Helpers;
+using BLE_Interface.Models;
 using BLE_Interface.Services;
-using LiveChartsCore;
-using LiveChartsCore.Defaults;
-using LiveChartsCore.Measure;
-using LiveChartsCore.SkiaSharpView;
-using LiveChartsCore.SkiaSharpView.Painting;
-using LiveChartsCore.SkiaSharpView.WPF;
 using SkiaSharp;
 using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
-using System.Security.Cryptography;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
-using System.Windows.Media.Media3D; // for Quaternion (WPF)
-using System.Collections.Generic;
-using BLE_Interface.Helpers;
-using System.Text; // <-- added for StringBuilder
 
 namespace BLE_Interface.ViewModels
 {
-    public class MainWindowViewModel : INotifyPropertyChanged
+    public class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
-        // maximum number of points to keep in each series
-        private const int MaxDataPoints = 1000;
-
-        // INotifyPropertyChanged implementation
-        public event PropertyChangedEventHandler PropertyChanged;
-        private void OnPropertyChanged(string propName) =>
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propName));
-
-        // BLE service
         private readonly BleService _bleService;
+        private int _imuSampleCounter = 0;
+        private const int ImuDownsampleFactor = 5;
 
-        // Devices list
+        // Log management
+        private readonly ObservableCollection<string> _logList = new ObservableCollection<string>();
+        private const int MaxLogLines = 100;
+
+        // Breath charts (top priority)
+        public DualSeriesChartControl BRChart { get; }
+        public DualSeriesChartControl TVChart { get; }
+        public DualSeriesChartControl MVChart { get; }
+
+        // Chest charts
+        public SkiaChartControl ChestRawChart { get; }
+        public SkiaChartControl ChestNormChart { get; }
+
+        // IMU charts (individual but displayed together)
+        public SkiaChartControl AccXChart { get; }
+        public SkiaChartControl AccYChart { get; }
+        public SkiaChartControl AccZChart { get; }
+        public SkiaChartControl GyrXChart { get; }
+        public SkiaChartControl GyrYChart { get; }
+        public SkiaChartControl GyrZChart { get; }
+
+        public event PropertyChangedEventHandler PropertyChanged;
+        private void OnPropertyChanged(string name) =>
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+
         public ObservableCollection<BleDeviceModel> Devices => _bleService.DiscoveredDevices;
-        private readonly MadgwickAHRS _madgwick = new MadgwickAHRS(1.0f / 125.0f);
-
-        private Quaternion _orientation = Quaternion.Identity;
-        public Quaternion Orientation
-        {
-            get => _orientation;
-            set
-            {
-                if (_orientation != value)
-                {
-                    _orientation = value;
-                    OnPropertyChanged(nameof(Orientation));
-                }
-            }
-        }
 
         private BleDeviceModel _selectedDevice;
         public BleDeviceModel SelectedDevice
         {
             get => _selectedDevice;
-            set { if (_selectedDevice != value) { _selectedDevice = value; OnPropertyChanged(nameof(SelectedDevice)); } }
+            set
+            {
+                if (_selectedDevice != value)
+                {
+                    _selectedDevice = value;
+                    OnPropertyChanged(nameof(SelectedDevice));
+                }
+            }
         }
 
-        // Log (view) + raw store for filtering
-        private string _log;
-        public string Log
-        {
-            get => _log;
-            set { if (_log != value) { _log = value; OnPropertyChanged(nameof(Log)); } }
-        }
-
-        // --- Log filtering state ---
-        private readonly List<string> _allLogs = new();  // raw lines with timestamps
-
-        private bool _showBattery = true;
-        public bool ShowBattery
-        {
-            get => _showBattery;
-            set { if (_showBattery != value) { _showBattery = value; OnPropertyChanged(nameof(ShowBattery)); RebuildLogView(); } }
-        }
-
-        private bool _showIMU;
-        public bool ShowIMU
-        {
-            get => _showIMU;
-            set { if (_showIMU != value) { _showIMU = value; OnPropertyChanged(nameof(ShowIMU)); RebuildLogView(); } }
-        }
-
-        private bool _showBreathing;
-        public bool ShowBreathing
-        {
-            get => _showBreathing;
-            set { if (_showBreathing != value) { _showBreathing = value; OnPropertyChanged(nameof(ShowBreathing)); RebuildLogView(); } }
-        }
-
-        private bool _showStretch;
-        public bool ShowStretch
-        {
-            get => _showStretch;
-            set { if (_showStretch != value) { _showStretch = value; OnPropertyChanged(nameof(ShowStretch)); RebuildLogView(); } }
-        }
-
-        private bool _showPressureTemp;
-        public bool ShowPressureTemp
-        {
-            get => _showPressureTemp;
-            set { if (_showPressureTemp != value) { _showPressureTemp = value; OnPropertyChanged(nameof(ShowPressureTemp)); RebuildLogView(); } }
-        }
-
-        private bool _showHR;
-        public bool ShowHR
-        {
-            get => _showHR;
-            set { if (_showHR != value) { _showHR = value; OnPropertyChanged(nameof(ShowHR)); RebuildLogView(); } }
-        }
-
-        private bool _showGeneral;  // discovery, connect, files, scan, etc.
-        public bool ShowGeneral
-        {
-            get => _showGeneral;
-            set { if (_showGeneral != value) { _showGeneral = value; OnPropertyChanged(nameof(ShowGeneral)); RebuildLogView(); } }
-        }
-
-        // Optional header/toolbar binding for current battery level of connected device
         private int? _batteryLevel;
         public int? BatteryLevel
         {
             get => _batteryLevel;
-            set { if (_batteryLevel != value) { _batteryLevel = value; OnPropertyChanged(nameof(BatteryLevel)); } }
+            set
+            {
+                if (_batteryLevel != value)
+                {
+                    _batteryLevel = value;
+                    OnPropertyChanged(nameof(BatteryLevel));
+                }
+            }
         }
 
-        // Extended-mode live values
+        private string _logMessages = "";
+        public string LogMessages
+        {
+            get => _logMessages;
+            set { if (_logMessages != value) { _logMessages = value; OnPropertyChanged(nameof(LogMessages)); } }
+        }
+
         private uint _latestCounter;
         private ushort _latestChestRaw;
         private ushort _latestChestNorm;
-        private string _latestAccel;
-        private string _latestGyro;
-        private string _latestPL;
+        private string _latestAccel = "—";
+        private string _latestGyro = "—";
+        private string _latestPL = "—";
         private uint _latestPressure;
         private short _latestTemperature;
+        private ushort _latestStretch;
+        private ushort _latestHeartRate;
+        private ushort _latestBreathingRate;
+        private ushort _latestCadence;
+        private uint _latestBreathCounter;
+        private float _latestRawBRInterval;
+        private float _latestProcessedBRInterval;
+        private ushort _latestRawTidalVolume;
+        private ushort _latestProcessedTidalVolume;
+        private ushort _latestRawMinuteVolume;
+        private ushort _latestProcessedMinuteVolume;
+
+
+        // Breath Timestamps data fields
+        private uint _latestBreathTimestampsCounter = 0;
+        private uint _latestTvValleyTimeIndex = 0;
+        private ushort _latestTvValleyValue = 0;
+        private uint _latestTvPeakTimeIndex = 0;
+        private ushort _latestTvPeakValue = 0;
+        public uint LatestBreathTimestampsCounter
+        {
+            get => _latestBreathTimestampsCounter;
+            set { if (_latestBreathTimestampsCounter != value) { _latestBreathTimestampsCounter = value; OnPropertyChanged(nameof(LatestBreathTimestampsCounter)); } }
+        }
+
+        public uint LatestTvValleyTimeIndex
+        {
+            get => _latestTvValleyTimeIndex;
+            set { if (_latestTvValleyTimeIndex != value) { _latestTvValleyTimeIndex = value; OnPropertyChanged(nameof(LatestTvValleyTimeIndex)); } }
+        }
+
+        public ushort LatestTvValleyValue
+        {
+            get => _latestTvValleyValue;
+            set { if (_latestTvValleyValue != value) { _latestTvValleyValue = value; OnPropertyChanged(nameof(LatestTvValleyValue)); } }
+        }
+
+        public uint LatestTvPeakTimeIndex
+        {
+            get => _latestTvPeakTimeIndex;
+            set { if (_latestTvPeakTimeIndex != value) { _latestTvPeakTimeIndex = value; OnPropertyChanged(nameof(LatestTvPeakTimeIndex)); } }
+        }
+
+        public ushort LatestTvPeakValue
+        {
+            get => _latestTvPeakValue;
+            set { if (_latestTvPeakValue != value) { _latestTvPeakValue = value; OnPropertyChanged(nameof(LatestTvPeakValue)); } }
+        }
+
+
+        public uint LatestBreathCounter
+        {
+            get => _latestBreathCounter;
+            set { if (_latestBreathCounter != value) { _latestBreathCounter = value; OnPropertyChanged(nameof(LatestBreathCounter)); } }
+        }
+
+        public float LatestRawBRInterval
+        {
+            get => _latestRawBRInterval;
+            set { if (_latestRawBRInterval != value) { _latestRawBRInterval = value; OnPropertyChanged(nameof(LatestRawBRInterval)); } }
+        }
+
+        public float LatestProcessedBRInterval
+        {
+            get => _latestProcessedBRInterval;
+            set { if (_latestProcessedBRInterval != value) { _latestProcessedBRInterval = value; OnPropertyChanged(nameof(LatestProcessedBRInterval)); } }
+        }
+
+        public ushort LatestRawTidalVolume
+        {
+            get => _latestRawTidalVolume;
+            set { if (_latestRawTidalVolume != value) { _latestRawTidalVolume = value; OnPropertyChanged(nameof(LatestRawTidalVolume)); } }
+        }
+
+        public ushort LatestProcessedTidalVolume
+        {
+            get => _latestProcessedTidalVolume;
+            set { if (_latestProcessedTidalVolume != value) { _latestProcessedTidalVolume = value; OnPropertyChanged(nameof(LatestProcessedTidalVolume)); } }
+        }
+
+        public ushort LatestRawMinuteVolume
+        {
+            get => _latestRawMinuteVolume;
+            set { if (_latestRawMinuteVolume != value) { _latestRawMinuteVolume = value; OnPropertyChanged(nameof(LatestRawMinuteVolume)); } }
+        }
+
+        public ushort LatestProcessedMinuteVolume
+        {
+            get => _latestProcessedMinuteVolume;
+            set { if (_latestProcessedMinuteVolume != value) { _latestProcessedMinuteVolume = value; OnPropertyChanged(nameof(LatestProcessedMinuteVolume)); } }
+        }
 
         public uint LatestCounter
         {
             get => _latestCounter;
             set { if (_latestCounter != value) { _latestCounter = value; OnPropertyChanged(nameof(LatestCounter)); } }
         }
+
         public ushort LatestChestRaw
         {
             get => _latestChestRaw;
             set { if (_latestChestRaw != value) { _latestChestRaw = value; OnPropertyChanged(nameof(LatestChestRaw)); } }
         }
+
         public ushort LatestChestNormalized
         {
             get => _latestChestNorm;
             set { if (_latestChestNorm != value) { _latestChestNorm = value; OnPropertyChanged(nameof(LatestChestNormalized)); } }
         }
+
         public string LatestAccelerometer
         {
             get => _latestAccel;
             set { if (_latestAccel != value) { _latestAccel = value; OnPropertyChanged(nameof(LatestAccelerometer)); } }
         }
+
         public string LatestGyroscope
         {
             get => _latestGyro;
             set { if (_latestGyro != value) { _latestGyro = value; OnPropertyChanged(nameof(LatestGyroscope)); } }
         }
+
         public string LatestPlayerLoad
         {
             get => _latestPL;
             set { if (_latestPL != value) { _latestPL = value; OnPropertyChanged(nameof(LatestPlayerLoad)); } }
         }
+
         public uint LatestPressure
         {
             get => _latestPressure;
             set { if (_latestPressure != value) { _latestPressure = value; OnPropertyChanged(nameof(LatestPressure)); } }
         }
+
         public short LatestTemperature
         {
             get => _latestTemperature;
             set { if (_latestTemperature != value) { _latestTemperature = value; OnPropertyChanged(nameof(LatestTemperature)); } }
         }
 
-        // Window span for all charts
-        private double _window = 1000;
+        public ushort LatestStretch
+        {
+            get => _latestStretch;
+            set { if (_latestStretch != value) { _latestStretch = value; OnPropertyChanged(nameof(LatestStretch)); } }
+        }
 
-        // Stretch chart
-        public ObservableCollection<ObservablePoint> StretchPoints { get; } = new();
-        public ISeries[] StretchSeries { get; }
-        public Axis[] StretchXAxes { get; }
-        public Axis[] StretchYAxes { get; }
+        public ushort LatestHeartRate
+        {
+            get => _latestHeartRate;
+            set { if (_latestHeartRate != value) { _latestHeartRate = value; OnPropertyChanged(nameof(LatestHeartRate)); } }
+        }
 
-        // Chest chart
-        public ObservableCollection<ObservablePoint> ChestRawPoints { get; } = new();
-        public ObservableCollection<ObservablePoint> ChestNormPoints { get; } = new();
-        public ISeries[] ChestSeries { get; }
-        public Axis[] ChestXAxes { get; }
-        public Axis[] ChestYAxes { get; }
+        public ushort LatestBreathingRate
+        {
+            get => _latestBreathingRate;
+            set { if (_latestBreathingRate != value) { _latestBreathingRate = value; OnPropertyChanged(nameof(LatestBreathingRate)); } }
+        }
 
-        // Accelerometer chart (avg)
-        public ObservableCollection<ObservablePoint> AccXPoints { get; } = new();
-        public ObservableCollection<ObservablePoint> AccYPoints { get; } = new();
-        public ObservableCollection<ObservablePoint> AccZPoints { get; } = new();
-        public ISeries[] AccSeries { get; }
-        public Axis[] AccXAxes { get; }
-        public Axis[] AccYAxes { get; }
+        public ushort LatestCadence
+        {
+            get => _latestCadence;
+            set { if (_latestCadence != value) { _latestCadence = value; OnPropertyChanged(nameof(LatestCadence)); } }
+        }
 
-        // Gyroscope chart (avg)
-        public ObservableCollection<ObservablePoint> GyrXPoints { get; } = new();
-        public ObservableCollection<ObservablePoint> GyrYPoints { get; } = new();
-        public ObservableCollection<ObservablePoint> GyrZPoints { get; } = new();
-        public ISeries[] GyrSeries { get; }
-        public Axis[] GyrXAxes { get; }
-        public Axis[] GyrYAxes { get; }
-
-        // Commands
         public ICommand ScanCommand { get; }
         public ICommand ConnectCommand { get; }
         public ICommand SyncRTCCommand { get; }
@@ -225,253 +265,152 @@ namespace BLE_Interface.ViewModels
         public ICommand StopStretchCommand { get; }
         public ICommand EraseFilesCommand { get; }
         public ICommand FactoryCalCommand { get; }
+        public ICommand ClearLogsCommand { get; }
 
         public MainWindowViewModel()
         {
-            // BLE service
             _bleService = new BleService();
-            _bleService.LogMessage += AppendLog;
-            _bleService.DeviceConnected += () => AppendLog("Device connected.");
-            _bleService.IMUSamplesReceived += OnIMUSamplesReceived;
 
-            // Battery subscription — updates connected device’s Battery% and optional header value
-            _bleService.BatteryLevelUpdated += level =>
+            _bleService.LogMessage += OnLogMessage;
+            _bleService.DeviceConnected += OnDeviceConnected;
+            _bleService.DeviceDisconnected += OnDeviceDisconnected;
+            _bleService.BatteryLevelUpdated += OnBatteryLevelUpdated;
+            _bleService.StretchDataReceived += OnStretchDataReceived;
+            _bleService.ExtendedDataReceived += OnExtendedDataReceived;
+            _bleService.DeviceDiscovered += OnDeviceDiscovered;
+            _bleService.BreathDataReceived += OnBreathDataReceived;
+            _bleService.BreathTimestampsReceived += OnBreathTimestampsReceived;
+
+            BRChart = new DualSeriesChartControl
             {
-                Application.Current.Dispatcher.Invoke(() =>
-                {
-                    BatteryLevel = level;
-                    if (SelectedDevice != null)
-                        SelectedDevice.BatteryPercent = level;
-                });
+                RawColor = SKColors.Red,
+                ProcessedColor = SKColors.Cyan,
+                WindowSize = 1500,
+                SampleRate = 25.0,
+                ShowGrid = true,
+                ShowLabels = true,
+                Title = "Breathing Rate (BR)",
+                YAxisIncrements = new double[] { 5, 10, 20, 25, 50, 100 },
+                AutoScaleY = false,
+                MinY = 0,
+                MaxY = 100
             };
 
-            // Build stretch chart
-            StretchSeries = new ISeries[]
+            TVChart = new DualSeriesChartControl
             {
-                new LineSeries<ObservablePoint>
-                {
-                    Values = StretchPoints,
-                    GeometrySize = 0,
-                    LineSmoothness = 0,
-                    Fill = null,
-                    Stroke = new SolidColorPaint(SKColors.LightYellow, 2)
-                }
-            };
-            StretchXAxes = new[] { new Axis { MinLimit = 0, MaxLimit = _window, LabelsPaint = null, SeparatorsPaint = null, TicksPaint = null } };
-            StretchYAxes = new[] { new Axis { MinLimit = 2000, MaxLimit = 5000, LabelsPaint = null, SeparatorsPaint = null, TicksPaint = null } };
-
-            // Build chest chart
-            ChestSeries = new ISeries[]
-            {
-                new ScatterSeries<ObservablePoint> { Values = ChestRawPoints, GeometrySize = 6, Fill = new SolidColorPaint(SKColors.Red, 1) },
-                new LineSeries<ObservablePoint>    { Values = ChestNormPoints, GeometrySize = 0, LineSmoothness = 0, Fill = null, Stroke = new SolidColorPaint(SKColors.Orange, 2) }
-            };
-            ChestXAxes = new[] { new Axis { MinLimit = 0, MaxLimit = _window, LabelsPaint = null, SeparatorsPaint = null, TicksPaint = null } };
-            ChestYAxes = new[] { new Axis { LabelsPaint = null, SeparatorsPaint = null, TicksPaint = null } };
-
-            // Build accelerometer chart
-            AccSeries = new ISeries[]
-            {
-                new LineSeries<ObservablePoint>
-                {
-                    Values       = AccXPoints,
-                    GeometrySize = 0,
-                    Stroke       = new SolidColorPaint(SKColors.Yellow, 2),
-                    Fill         = null
-                },
-                new LineSeries<ObservablePoint>
-                {
-                    Values       = AccYPoints,
-                    GeometrySize = 0,
-                    Stroke       = new SolidColorPaint(SKColors.Blue, 2),
-                    Fill         = null
-                },
-                new LineSeries<ObservablePoint>
-                {
-                    Values       = AccZPoints,
-                    GeometrySize = 0,
-                    Stroke       = new SolidColorPaint(SKColors.Red, 2),
-                    Fill         = null    }
-            };
-            AccXAxes = new[] { new Axis { MinLimit = 0, MaxLimit = _window, LabelsPaint = null, SeparatorsPaint = null, TicksPaint = null } };
-            AccYAxes = new[] { new Axis { LabelsPaint = null, SeparatorsPaint = null, TicksPaint = null } };
-
-            // Build gyroscope chart
-            GyrSeries = new ISeries[]
-            {
-                new LineSeries<ObservablePoint>
-                {
-                    Values       = GyrXPoints,
-                    GeometrySize = 0,
-                    Stroke       = new SolidColorPaint(SKColors.Yellow, 2),
-                    Fill         = null
-                },
-                new LineSeries<ObservablePoint>
-                {
-                    Values       = GyrYPoints,
-                    GeometrySize = 0,
-                    Stroke       = new SolidColorPaint(SKColors.Blue, 2),
-                    Fill         = null
-                },
-                new LineSeries<ObservablePoint>
-                {
-                    Values       = GyrZPoints,
-                    GeometrySize = 0,
-                    Stroke       = new SolidColorPaint(SKColors.Red, 2),
-                    Fill         = null
-                }
-            };
-            GyrXAxes = new[] { new Axis { MinLimit = 0, MaxLimit = _window, LabelsPaint = null, SeparatorsPaint = null, TicksPaint = null } };
-            GyrYAxes = new[] { new Axis { LabelsPaint = null, SeparatorsPaint = null, TicksPaint = null } };
-
-            // Subscriptions
-
-            _bleService.StretchDataReceived += (counter, value) =>
-            {
-                Application.Current.Dispatcher.Invoke(() =>
-                {
-                    // 1) Add & trim to MaxDataPoints
-                    StretchPoints.Add(new ObservablePoint(counter, value));
-                    if (StretchPoints.Count > MaxDataPoints)
-                        StretchPoints.RemoveAt(0);
-
-                    // 2) Autoscale X-axis window
-                    if (counter > _window)
-                    {
-                        StretchXAxes[0].MinLimit = counter - _window;
-                        StretchXAxes[0].MaxLimit = counter;
-                    }
-                    else
-                    {
-                        StretchXAxes[0].MinLimit = 0;
-                        StretchXAxes[0].MaxLimit = _window;
-                    }
-
-                    // 3) Notify the chart to re-read the axes
-                    OnPropertyChanged(nameof(StretchXAxes));
-                    OnPropertyChanged(nameof(StretchYAxes));
-                });
+                RawColor = SKColors.Orange,
+                ProcessedColor = SKColors.LimeGreen,
+                WindowSize = 1500,
+                SampleRate = 25.0,
+                ShowGrid = true,
+                ShowLabels = true,
+                Title = "Tidal Volume (TV)"
             };
 
-            _bleService.ExtendedDataReceived += ext =>
+            MVChart = new DualSeriesChartControl
             {
-                Application.Current.Dispatcher.Invoke(() =>
-                {
-                    // --- 1) Numeric displays ---
-                    LatestCounter = ext.TimestampRel;
-                    LatestChestRaw = ext.Chest;
-                    LatestChestNormalized = ext.ChestNormalized;
-                    LatestAccelerometer = string.Join(",", ext.IMU.Select(i => i.AccX));
-                    LatestGyroscope = string.Join(",", ext.IMU.Select(i => i.GyrX));
-                    LatestPlayerLoad = string.Join(",", ext.PlayerLoad);
-                    LatestPressure = ext.Pressure;
-                    LatestTemperature = ext.Temperature;
-
-                    // --- 2) Chest plot (raw + processed) ---
-                    ChestRawPoints.Add(new ObservablePoint(ext.TimestampRel, ext.Chest));
-                    if (ChestRawPoints.Count > MaxDataPoints)
-                        ChestRawPoints.RemoveAt(0);
-
-                    ChestNormPoints.Add(new ObservablePoint(ext.TimestampRel, ext.ChestNormalized));
-                    if (ChestNormPoints.Count > MaxDataPoints)
-                        ChestNormPoints.RemoveAt(0);
-
-                    // autoscale X-axis for chest
-                    if (ext.TimestampRel > _window)
-                    {
-                        ChestXAxes[0].MinLimit = ext.TimestampRel - _window;
-                        ChestXAxes[0].MaxLimit = ext.TimestampRel;
-                    }
-                    else
-                    {
-                        ChestXAxes[0].MinLimit = 0;
-                        ChestXAxes[0].MaxLimit = _window;
-                    }
-                    OnPropertyChanged(nameof(ChestXAxes));
-                    OnPropertyChanged(nameof(ChestYAxes));
-
-                    // --- 3) Accelerometer (avg of 5 samples) ---
-                    var avgAx = ext.IMU.Average(i => i.AccX);
-                    var avgAy = ext.IMU.Average(i => i.AccY);
-                    var avgAz = ext.IMU.Average(i => i.AccZ);
-
-                    AccXPoints.Add(new ObservablePoint(ext.TimestampRel, avgAx));
-                    if (AccXPoints.Count > MaxDataPoints)
-                        AccXPoints.RemoveAt(0);
-
-                    AccYPoints.Add(new ObservablePoint(ext.TimestampRel, avgAy));
-                    if (AccYPoints.Count > MaxDataPoints)
-                        AccYPoints.RemoveAt(0);
-
-                    AccZPoints.Add(new ObservablePoint(ext.TimestampRel, avgAz));
-                    if (AccZPoints.Count > MaxDataPoints)
-                        AccZPoints.RemoveAt(0);
-
-                    // autoscale X-axis for accel
-                    if (ext.TimestampRel > _window)
-                    {
-                        AccXAxes[0].MinLimit = ext.TimestampRel - _window;
-                        AccXAxes[0].MaxLimit = ext.TimestampRel;
-                    }
-                    else
-                    {
-                        AccXAxes[0].MinLimit = 0;
-                        AccXAxes[0].MaxLimit = _window;
-                    }
-                    OnPropertyChanged(nameof(AccXAxes));
-                    OnPropertyChanged(nameof(AccYAxes));
-
-                    // --- 4) Gyroscope (avg of 5 samples) ---
-                    var avgGx = ext.IMU.Average(i => i.GyrX);
-                    var avgGy = ext.IMU.Average(i => i.GyrY);
-                    var avgGz = ext.IMU.Average(i => i.GyrZ);
-
-                    GyrXPoints.Add(new ObservablePoint(ext.TimestampRel, avgGx));
-                    if (GyrXPoints.Count > MaxDataPoints)
-                        GyrXPoints.RemoveAt(0);
-
-                    GyrYPoints.Add(new ObservablePoint(ext.TimestampRel, avgGy));
-                    if (GyrYPoints.Count > MaxDataPoints)
-                        GyrYPoints.RemoveAt(0);
-
-                    GyrZPoints.Add(new ObservablePoint(ext.TimestampRel, avgGz));
-                    if (GyrZPoints.Count > MaxDataPoints)
-                        GyrZPoints.RemoveAt(0);
-
-                    // autoscale X-axis for gyro
-                    if (ext.TimestampRel > _window)
-                    {
-                        GyrXAxes[0].MinLimit = ext.TimestampRel - _window;
-                        GyrXAxes[0].MaxLimit = ext.TimestampRel;
-                    }
-                    else
-                    {
-                        GyrXAxes[0].MinLimit = 0;
-                        GyrXAxes[0].MaxLimit = _window;
-                    }
-                    OnPropertyChanged(nameof(GyrXAxes));
-                    OnPropertyChanged(nameof(GyrYAxes));
-                });
+                RawColor = SKColors.Yellow,
+                ProcessedColor = SKColors.DeepSkyBlue,
+                WindowSize = 1500,
+                SampleRate = 25.0,
+                ShowGrid = true,
+                ShowLabels = true,
+                Title = "Minute Ventilation (MV)"
             };
 
-            // Commands
+            ChestRawChart = new SkiaChartControl
+            {
+                LineColor = SKColors.Red,
+                LineWidth = 1.5f,
+                AutoScaleY = true,
+                WindowSize = 1500,
+                ShowGrid = true,
+                ShowLabels = true,
+                SampleRate = 25.0
+            };
+
+            ChestNormChart = new SkiaChartControl
+            {
+                LineColor = SKColors.Orange,
+                LineWidth = 2f,
+                AutoScaleY = true,
+                WindowSize = 1500,
+                ShowGrid = true,
+                ShowLabels = true,
+                SampleRate = 25.0
+            };
+
+            AccXChart = new SkiaChartControl
+            {
+                LineColor = SKColors.Yellow,
+                LineWidth = 2f,
+                AutoScaleY = true,
+                WindowSize = 1500,
+                ShowGrid = true,
+                ShowLabels = true,
+                SampleRate = 25.0
+            };
+
+            AccYChart = new SkiaChartControl
+            {
+                LineColor = SKColors.Cyan,
+                LineWidth = 2f,
+                AutoScaleY = true,
+                WindowSize = 1500,
+                ShowGrid = true,
+                ShowLabels = true,
+                SampleRate = 25.0
+            };
+
+            AccZChart = new SkiaChartControl
+            {
+                LineColor = SKColors.Red,
+                LineWidth = 2f,
+                AutoScaleY = true,
+                WindowSize = 1500,
+                ShowGrid = true,
+                ShowLabels = true,
+                SampleRate = 25.0
+            };
+
+            GyrXChart = new SkiaChartControl
+            {
+                LineColor = SKColors.Yellow,
+                LineWidth = 2f,
+                AutoScaleY = true,
+                WindowSize = 1500,
+                ShowGrid = true,
+                ShowLabels = true,
+                SampleRate = 25.0
+            };
+
+            GyrYChart = new SkiaChartControl
+            {
+                LineColor = SKColors.Cyan,
+                LineWidth = 2f,
+                AutoScaleY = true,
+                WindowSize = 1500,
+                ShowGrid = true,
+                ShowLabels = true,
+                SampleRate = 25.0
+            };
+
+            GyrZChart = new SkiaChartControl
+            {
+                LineColor = SKColors.Red,
+                LineWidth = 2f,
+                AutoScaleY = true,
+                WindowSize = 1500,
+                ShowGrid = true,
+                ShowLabels = true,
+                SampleRate = 25.0
+            };
+
             ScanCommand = new RelayCommand(_ => StartScan());
             ConnectCommand = new RelayCommand(async _ => await ConnectToDevice(), _ => SelectedDevice != null);
             SyncRTCCommand = new RelayCommand(async _ => await SyncRTC());
             HardwareInfoCommand = new RelayCommand(async _ => await GetHardwareInfo());
-            StartActivityCommand = new RelayCommand(async _ =>
-            {
-                // Clear plots
-                StretchPoints.Clear(); ChestRawPoints.Clear(); ChestNormPoints.Clear();
-                AccXPoints.Clear(); AccYPoints.Clear(); AccZPoints.Clear();
-                GyrXPoints.Clear(); GyrYPoints.Clear(); GyrZPoints.Clear();
-                // Reset axes
-                StretchXAxes[0].MinLimit = 0; StretchXAxes[0].MaxLimit = _window;
-                ChestXAxes[0].MinLimit = 0; ChestXAxes[0].MaxLimit = _window;
-                AccXAxes[0].MinLimit = 0; AccXAxes[0].MaxLimit = _window;
-                GyrXAxes[0].MinLimit = 0; GyrXAxes[0].MaxLimit = _window;
-                await StartActivity();
-            }, _ => SelectedDevice != null);
+            StartActivityCommand = new RelayCommand(async _ => await StartActivity(), _ => SelectedDevice != null);
             StopActivityCommand = new RelayCommand(async _ => await StopActivity());
             ListFilesCommand = new RelayCommand(async _ => await ListFiles());
             DownloadAllCommand = new RelayCommand(async _ => await DownloadAllFiles());
@@ -479,157 +418,346 @@ namespace BLE_Interface.ViewModels
             StopStretchCommand = new RelayCommand(async _ => await StopStretchStream());
             EraseFilesCommand = new RelayCommand(async _ => await EraseFiles());
             FactoryCalCommand = new RelayCommand(async _ => await DoFactoryCal());
+            ClearLogsCommand = new RelayCommand(_ => ClearLogs());
         }
 
-        // --- Filter-aware logging ---
-        private void AppendLog(string message)
+        private void Log(string message)
         {
-            var line = $"[{DateTime.Now:HH:mm:ss}] {message}";
-            _allLogs.Add(line);
-
-            // Only append to visible log if current filters allow it
-            if (IsAllowed(message))
-                Log += line + "\n";
+            OnLogMessage(message);
         }
 
-        // Decide if a message passes filters based on emoji/prefix used in logs
-        private bool IsAllowed(string msg)
+        private void OnLogMessage(string message)
         {
-            if (msg.StartsWith("🔋")) return ShowBattery;
-            if (msg.StartsWith("🤖")) return ShowIMU;
-            if (msg.StartsWith("🌬️")) return ShowBreathing;
-            if (msg.StartsWith("🏋️")) return ShowStretch;
-            if (msg.StartsWith("🌡️")) return ShowPressureTemp;
-            if (msg.StartsWith("❤️‍🩹") || msg.StartsWith("❤️")) return ShowHR;
+            Services.Logging.Log.Info(message);
 
-            return ShowGeneral; // discovery, connect, files, scan, generic info
-        }
-
-        private void RebuildLogView()
-        {
-            var sb = new StringBuilder();
-            foreach (var line in _allLogs)
+            Application.Current.Dispatcher.BeginInvoke(new Action(() =>
             {
-                // find "] " and grab everything after it without using the range operator
-                int idx = line.IndexOf("] ");
-                string msg = (idx >= 0 && (idx + 2) < line.Length)
-                    ? line.Substring(idx + 2)
-                    : line;
+                string timestamped = $"[{DateTime.Now:HH:mm:ss}] {message}";
 
-                if (IsAllowed(msg)) sb.AppendLine(line);
-            }
-            Log = sb.ToString();
+                if (ShouldShowLog(message))
+                {
+                    _logList.Add(timestamped);
+
+                    while (_logList.Count > MaxLogLines)
+                        _logList.RemoveAt(0);
+
+                    LogMessages = string.Join(Environment.NewLine, _logList);
+                }
+            }));
         }
 
-        // BLE control methods
+        private bool ShouldShowLog(string message)
+        {
+            var text = message.ToLowerInvariant();
+
+            bool hasBattery = text.Contains("battery");
+            bool hasImu = text.Contains("imu");
+            bool hasBreath = text.Contains("breath");
+            bool hasStretch = text.Contains("stretch");
+            bool hasPress = text.Contains("pressure");
+            bool hasTemp = text.Contains("temp");
+            bool hasHR = text.Contains("hr") || text.Contains("heart rate");
+            bool isGeneral = !(hasBattery || hasImu || hasBreath || hasStretch || hasPress || hasTemp || hasHR);
+
+            // Only show general logs (connection status, device info, etc.)
+            return isGeneral;
+        }
+
+
+        private void ClearLogs()
+        {
+            _logList.Clear();
+            LogMessages = "";
+        }
+
+        private void OnDeviceDiscovered(BleDeviceModel device)
+        {
+            Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (!Devices.Contains(device)) Devices.Add(device);
+            }));
+        }
+
+        private void OnDeviceConnected()
+        {
+
+        }
+
+        private void OnDeviceDisconnected()
+        {
+
+        }
+
+        private void OnBatteryLevelUpdated(int level)
+        {
+            Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                BatteryLevel = level;
+                if (SelectedDevice != null) SelectedDevice.BatteryPercent = level;
+            }));
+        }
+
+        private void OnStretchDataReceived(uint counter, ushort value)
+        {
+            PerformanceMonitor.RecordEvent("StretchData");
+            Application.Current.Dispatcher.BeginInvoke(new Action(() => { LatestStretch = value; }));
+            ChestNormChart.AddPoint(counter, value);
+        }
+
+        private void OnBreathDataReceived(BleService.BreathDataPoint breath)
+        {
+            PerformanceMonitor.RecordEvent("BreathData");
+
+            Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                LatestBreathCounter = breath.Counter;
+                LatestRawBRInterval = breath.RawBRInterval;
+                LatestProcessedBRInterval = breath.ProcessedBRInterval;
+                LatestRawTidalVolume = breath.RawTidalVolume;
+                LatestProcessedTidalVolume = breath.ProcessedTidalVolume;
+                LatestRawMinuteVolume = breath.RawMinuteVolume;
+                LatestProcessedMinuteVolume = breath.ProcessedMinuteVolume;
+            }));
+
+            BRChart.AddPoint(breath.Counter, breath.RawBRInterval, breath.ProcessedBRInterval);
+            TVChart.AddPoint(breath.Counter, breath.RawTidalVolume, breath.ProcessedTidalVolume);
+            MVChart.AddPoint(breath.Counter, breath.RawMinuteVolume, breath.ProcessedMinuteVolume);
+        }
+        private void OnBreathTimestampsReceived(BleService.BreathTimestampsDataPoint timestamps)
+        {
+            Log($"Breath Timestamps - Counter: {timestamps.Counter}, Valley Time: {timestamps.TvValleyTimeIndex}, Valley Val: {timestamps.TvValleyValue}, Peak Time: {timestamps.TvPeakTimeIndex}, Peak Val: {timestamps.TvPeakValue}");
+
+            Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                LatestBreathTimestampsCounter = timestamps.Counter;
+                LatestTvValleyTimeIndex = timestamps.TvValleyTimeIndex;
+                LatestTvValleyValue = timestamps.TvValleyValue;
+                LatestTvPeakTimeIndex = timestamps.TvPeakTimeIndex;
+                LatestTvPeakValue = timestamps.TvPeakValue;
+            }));
+        }
+        private void OnExtendedDataReceived(BleService.ExtendedDataPoint ext)
+        {
+            PerformanceMonitor.RecordEvent("ExtendedData");
+
+            Application.Current.Dispatcher.BeginInvoke(new Action(() =>
+            {
+                LatestCounter = ext.TimestampRel;
+                LatestChestRaw = ext.Chest;
+                LatestChestNormalized = ext.ChestNormalized;
+                if (ext.IMU != null && ext.IMU.Count > 0)
+                {
+                    LatestAccelerometer = $"{ext.IMU[0].AccX:F1},{ext.IMU[0].AccY:F1},{ext.IMU[0].AccZ:F1}";
+                    LatestGyroscope = $"{ext.IMU[0].GyrX:F1},{ext.IMU[0].GyrY:F1},{ext.IMU[0].GyrZ:F1}";
+                }
+                if (ext.PlayerLoad != null && ext.PlayerLoad.Count > 0)
+                {
+                    LatestPlayerLoad = string.Join(",", ext.PlayerLoad);
+                }
+                LatestPressure = ext.Pressure;
+                LatestTemperature = ext.Temperature;
+            }));
+
+            ChestRawChart.AddPoint(ext.TimestampRel, ext.ChestNormalized);
+            ChestNormChart.AddPoint(ext.TimestampRel, ext.Chest);
+
+            if (ext.IMU != null && ext.IMU.Count > 0)
+            {
+                _imuSampleCounter++;
+                if (_imuSampleCounter >= ImuDownsampleFactor)
+                {
+                    _imuSampleCounter = 0;
+                    AccXChart.AddPoint(ext.TimestampRel, ext.IMU.Average(s => s.AccX));
+                    AccYChart.AddPoint(ext.TimestampRel, ext.IMU.Average(s => s.AccY));
+                    AccZChart.AddPoint(ext.TimestampRel, ext.IMU.Average(s => s.AccZ));
+                    GyrXChart.AddPoint(ext.TimestampRel, ext.IMU.Average(s => s.GyrX));
+                    GyrYChart.AddPoint(ext.TimestampRel, ext.IMU.Average(s => s.GyrY));
+                    GyrZChart.AddPoint(ext.TimestampRel, ext.IMU.Average(s => s.GyrZ));
+                }
+            }
+        }
+
         public void StartScan() => _bleService.StartScanning();
 
         public async Task ConnectToDevice()
         {
             if (SelectedDevice == null) return;
-            bool ok = await _bleService.ConnectToDeviceAsync(SelectedDevice);
-            AppendLog(ok ? "Connected successfully." : "Failed to connect.");
+            bool ok = await _bleService.ConnectAsync(SelectedDevice);
+            if (!ok) Log("Failed to connect");
         }
 
         public async Task SyncRTC()
         {
-            await _bleService.SyncRTCAsync();
-            AppendLog("RTC synced.");
+            try
+            {
+                await _bleService.SyncRTCAsync();
+                Log("RTC synced");
+            }
+            catch (Exception ex) { Log($"RTC sync failed: {ex.Message}"); }
         }
 
         public async Task GetHardwareInfo()
         {
-            var data = await _bleService.SendControlCommandAsync(0x0001);
-            var info = HardwareInfo.Parse(data);
-            AppendLog("Device Info:\n" + info);
+            try
+            {
+                var data = await _bleService.GetHardwareInfoAsync();
+                var info = HardwareInfo.Parse(data);
+
+                // Log each line separately so filtering works correctly
+                string output = info.ToString();
+                var lines = output.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+
+                foreach (var line in lines)
+                {
+                    Log(line.Trim());
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"Hardware info failed: {ex.Message}");
+            }
         }
 
         public async Task StartActivity()
         {
-            await _bleService.StartActivityAsync();
-            AppendLog("Start Activity command sent.");
+            BRChart.Clear();
+            TVChart.Clear();
+            MVChart.Clear();
+            ChestRawChart.Clear();
+            ChestNormChart.Clear();
+            AccXChart.Clear();
+            AccYChart.Clear();
+            AccZChart.Clear();
+            GyrXChart.Clear();
+            GyrYChart.Clear();
+            GyrZChart.Clear();
+            _imuSampleCounter = 0;
+
+            try
+            {
+                await _bleService.StartActivityAsync();
+                Log("Activity started");
+            }
+            catch (Exception ex) { Log($"Start activity failed: {ex.Message}"); }
         }
 
         public async Task StopActivity()
         {
-            await _bleService.StopActivityAsync();
-            AppendLog("Stop Activity command sent.");
+            try
+            {
+                await _bleService.StopActivityAsync();
+                Log("Activity stopped");
+            }
+            catch (Exception ex) { Log($"Stop activity failed: {ex.Message}"); }
         }
 
         public async Task ListFiles()
         {
-            await _bleService.ListFilesAsync();
-            var files = _bleService.FileList;
-            AppendLog($"📂 {files.Count} file(s)");
-            foreach (var f in files)
-                AppendLog(f.ToString());
+            try
+            {
+                await _bleService.ListFilesAsync();
+                var files = _bleService.FileList;
+                Log($"📂 {files.Count} file(s)");
+                foreach (var f in files) Log(f.ToString());
+            }
+            catch (Exception ex) { Log($"List files failed: {ex.Message}"); }
         }
 
         public async Task DownloadAllFiles()
         {
-            foreach (var file in _bleService.FileList)
-                await _bleService.DownloadFileAsync(file);
-
-            AppendLog("All files downloaded.");
+            try
+            {
+                var files = _bleService.FileList.ToList();
+                Log($"⬇️ Downloading {files.Count} file(s)...");
+                foreach (var file in files) await _bleService.DownloadFileAsync(file);
+                Log("All files downloaded");
+            }
+            catch (Exception ex) { Log($"Download files failed: {ex.Message}"); }
         }
 
         public async Task StartStretchStream()
         {
-            await _bleService.StartStretchStreamAsync(SelectedDevice.Name);
+            if (SelectedDevice == null) return;
+
+            BRChart.Clear();
+            TVChart.Clear();
+            MVChart.Clear();
+            ChestRawChart.Clear();
+            ChestNormChart.Clear();
+            AccXChart.Clear();
+            AccYChart.Clear();
+            AccZChart.Clear();
+            GyrXChart.Clear();
+            GyrYChart.Clear();
+            GyrZChart.Clear();
+            _imuSampleCounter = 0;
+
+            try
+            {
+                await _bleService.StartStretchStreamAsync(SelectedDevice.Name);
+                Log("Stretch streaming started");
+            }
+            catch (Exception ex) { Log($"Start stretch failed: {ex.Message}"); }
         }
 
         public async Task StopStretchStream()
         {
-            await _bleService.StopStretchStreamAsync();
+            try
+            {
+                await _bleService.StopStretchStreamAsync();
+                Log("Stretch streaming stopped");
+            }
+            catch (Exception ex) { Log($"Stop stretch failed: {ex.Message}"); }
         }
 
         public async Task EraseFiles()
         {
-            await _bleService.EraseFilesAsync();
+            try
+            {
+                await _bleService.EraseFilesAsync();
+                Log("Files erased");
+            }
+            catch (Exception ex) { Log($"Erase files failed: {ex.Message}"); }
         }
 
         private async Task DoFactoryCal()
         {
-            AppendLog("🔧 Sending factory calibration command…");
             try
             {
+                Log("Factory calibration starting...");
                 await _bleService.FactoryCalibrationAsync();
-                AppendLog("✅ Factory calibration completed.");
+                Log("Factory calibration completed");
                 await Task.Delay(5000);
-                AppendLog("🎉 Factory calibration successful.");
+                Log("Factory calibration successful");
             }
-            catch (Exception ex)
-            {
-                AppendLog($"❌ Factory calibration failed: {ex.Message}");
-            }
+            catch (Exception ex) { Log($"Factory calibration failed: {ex.Message}"); }
         }
 
-        private void OnIMUSamplesReceived(List<IMUSample> samples)
+        public void Dispose()
         {
-            foreach (var sample in samples)
-            {
-                // Convert raw int16 to float (assuming ±32768 maps to ±16g for accel and ±2000 dps for gyro)
-                float ax = sample.AccX / 32768f * 16f;
-                float ay = sample.AccY / 32768f * 16f;
-                float az = sample.AccZ / 32768f * 16f;
+            _bleService.LogMessage -= OnLogMessage;
+            _bleService.DeviceConnected -= OnDeviceConnected;
+            _bleService.DeviceDisconnected -= OnDeviceDisconnected;
+            _bleService.BatteryLevelUpdated -= OnBatteryLevelUpdated;
+            _bleService.StretchDataReceived -= OnStretchDataReceived;
+            _bleService.ExtendedDataReceived -= OnExtendedDataReceived;
+            _bleService.DeviceDiscovered -= OnDeviceDiscovered;
+            _bleService.BreathDataReceived -= OnBreathDataReceived;
+            _bleService.BreathTimestampsReceived -= OnBreathTimestampsReceived;
 
-                float gx = sample.GyrX / 32768f * 2000f;
-                float gy = sample.GyrY / 32768f * 2000f;
-                float gz = sample.GyrZ / 32768f * 2000f;
+            BRChart?.Dispose();
+            TVChart?.Dispose();
+            MVChart?.Dispose();
+            ChestRawChart?.Dispose();
+            ChestNormChart?.Dispose();
+            AccXChart?.Dispose();
+            AccYChart?.Dispose();
+            AccZChart?.Dispose();
+            GyrXChart?.Dispose();
+            GyrYChart?.Dispose();
+            GyrZChart?.Dispose();
 
-                // Convert degrees/sec to rad/sec
-                float degToRad = (float)(Math.PI / 180);
-                gx *= degToRad;
-                gy *= degToRad;
-                gz *= degToRad;
-
-                // Update Madgwick filter
-                _madgwick.Update(gx, gy, gz, ax, ay, az);
-
-                // Get orientation
-                var (w, x, y, z) = _madgwick.Quaternion;
-                Orientation = new System.Windows.Media.Media3D.Quaternion(x, y, z, w);  // WPF expects xyzw
-            }
+            _bleService?.Dispose();
         }
     }
 }

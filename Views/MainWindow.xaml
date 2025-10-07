@@ -3,242 +3,423 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:lvc="clr-namespace:LiveChartsCore.SkiaSharpView.WPF;assembly=LiveChartsCore.SkiaSharpView.WPF"
         mc:Ignorable="d"
         xmlns:HelixToolkit="http://helix-toolkit.org/wpf"
-        Title="BLE Interface" Height="900" Width="1440">
+        Title="BLE Interface" Height="1200" Width="1440"
+        MinHeight="1000" MinWidth="1200">
 
-    <!-- Canvas for free placement of UI elements -->
-    <Canvas>
+    <Grid Background="#F5F5F5">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>  <!-- Control Buttons -->
+            <RowDefinition Height="Auto"/>  <!-- Device List -->
+            <RowDefinition Height="Auto"/>  <!-- System Logs -->
+            <RowDefinition Height="*"/>     <!-- Data Display -->
+        </Grid.RowDefinitions>
+        
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="400"/>  <!-- Left Panel -->
+            <ColumnDefinition Width="*"/>    <!-- Charts Area -->
+        </Grid.ColumnDefinitions>
 
-        <StackPanel Orientation="Horizontal" Canvas.Left="10" Canvas.Top="305" HorizontalAlignment="Center" VerticalAlignment="Top">
-            <CheckBox Content="Battery"      IsChecked="{Binding ShowBattery}"      Margin="0,0,10,0"/>
-            <CheckBox Content="IMU"          IsChecked="{Binding ShowIMU}"          Margin="0,0,10,0"/>
-            <CheckBox Content="Breathing"    IsChecked="{Binding ShowBreathing}"    Margin="0,0,10,0"/>
-            <CheckBox Content="Stretch"      IsChecked="{Binding ShowStretch}"      Margin="0,0,10,0"/>
-            <CheckBox Content="Pressure/Temp" IsChecked="{Binding ShowPressureTemp}" Margin="0,0,10,0"/>
-            <CheckBox Content="HR"           IsChecked="{Binding ShowHR}"           Margin="0,0,10,0"/>
-            <CheckBox Content="General"      IsChecked="{Binding ShowGeneral}"/>
+        <!-- Add a subtle separator between panels -->
+        <Rectangle Grid.Row="0" Grid.RowSpan="4" Grid.Column="0" Grid.ColumnSpan="2"
+                   Width="1" Fill="#CCCCCC" HorizontalAlignment="Right" Margin="0,10,0,10"/>
+
+        <!-- Control Buttons Section -->
+        <GroupBox Grid.Row="0" Grid.Column="0" Header="Device Controls" Margin="10,10,10,5">
+            <StackPanel Margin="5">
+                <!-- Control Buttons Row 1 -->
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
+                    <Button x:Name="btnScan" Content="Scan" Command="{Binding ScanCommand}" 
+                            Width="80" Height="32" Margin="0,0,5,0" 
+                            Background="#4CAF50" Foreground="White" BorderThickness="0"/>
+                    <Button x:Name="btnConnect" Content="Connect" Command="{Binding ConnectCommand}" 
+                            Width="80" Height="32" Margin="0,0,5,0"
+                            Background="#2196F3" Foreground="White" BorderThickness="0"/>
+                    <Button x:Name="btnSyncRTC" Content="Sync RTC" Command="{Binding SyncRTCCommand}" 
+                            Width="80" Height="32" Margin="0,0,5,0"
+                            Background="#FF9800" Foreground="White" BorderThickness="0"/>
+                    <Button x:Name="btnHardwareInfo" Content="Hardware Info" Command="{Binding HardwareInfoCommand}" 
+                            Width="100" Height="32" Margin="0,0,5,0"
+                            Background="#9C27B0" Foreground="White" BorderThickness="0"/>
+                </StackPanel>
+
+                <!-- Control Buttons Row 2 -->
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
+                    <Button x:Name="btnStartActivity" Content="Start Activity" Command="{Binding StartActivityCommand}" 
+                            Width="100" Height="32" Margin="0,0,5,0"
+                            Background="#4CAF50" Foreground="White" BorderThickness="0"/>
+                    <Button x:Name="btnStopActivity" Content="Stop Activity" Command="{Binding StopActivityCommand}" 
+                            Width="100" Height="32" Margin="0,0,5,0"
+                            Background="#F44336" Foreground="White" BorderThickness="0"/>
+                    <Button Content="Factory Cal" Command="{Binding FactoryCalCommand}" 
+                            Width="100" Height="32" Margin="0,0,5,0"
+                            Background="#607D8B" Foreground="White" BorderThickness="0"/>
+                </StackPanel>
+
+                <!-- File Operations Buttons -->
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
+                    <Button x:Name="btnListFiles" Content="List Files" Command="{Binding ListFilesCommand}" 
+                            Width="80" Height="32" Margin="0,0,5,0"
+                            Background="#795548" Foreground="White" BorderThickness="0"/>
+                    <Button x:Name="btnDownloadAll" Content="Download All" Command="{Binding DownloadAllCommand}" 
+                            Width="100" Height="32" Margin="0,0,5,0"
+                            Background="#3F51B5" Foreground="White" BorderThickness="0"/>
+                    <Button x:Name="btnEraseFiles" Content="Erase Files" Command="{Binding EraseFilesCommand}" 
+                            Width="100" Height="32" Margin="0,0,5,0"
+                            Background="#E91E63" Foreground="White" BorderThickness="0"/>
         </StackPanel>
 
-        <HelixToolkit:HelixViewport3D
-        x:Name="OrientationViewport"
-        ZoomExtentsWhenLoaded="True"
-        ShowCoordinateSystem="True"
-        CameraRotationMode="Trackball"
-        CameraInertiaFactor="0"
-        Canvas.Left="443" Canvas.Top="100"
-        Width="219" Height="200">
-
-            <HelixToolkit:HelixViewport3D.Camera>
-                <PerspectiveCamera 
-            Position="0,0,5" 
-            LookDirection="0,0,-5" 
-            UpDirection="0,1,0" 
-            FieldOfView="45"/>
-            </HelixToolkit:HelixViewport3D.Camera>
+                <!-- Stretch Control Buttons -->
+                <StackPanel Orientation="Horizontal">
+                    <Button x:Name="btnStartStretch" Content="Start Stretch" Command="{Binding StartStretchCommand}" 
+                            Width="100" Height="32" Margin="0,0,5,0"
+                            Background="#00BCD4" Foreground="White" BorderThickness="0"/>
+                    <Button x:Name="btnStopStretch" Content="Stop Stretch" Command="{Binding StopStretchCommand}" 
+                            Width="100" Height="32" Margin="0,0,5,0"
+                            Background="#FF5722" Foreground="White" BorderThickness="0"/>
+                </StackPanel>
+            </StackPanel>
+        </GroupBox>
 
 
-            <!-- Lighting -->
-            <HelixToolkit:DefaultLights />
-            <!-- Rotating Cube Model -->
-            <ModelVisual3D>
-
-
-                <ModelVisual3D.Transform>
-                    <Transform3DGroup>
-                        <!-- 1. Rotate cube -90° around Z to move +Y left -->
-                        <RotateTransform3D>
-                            <RotateTransform3D.Rotation>
-                                <AxisAngleRotation3D Axis="0,0,1" Angle="-90"/>
-                            </RotateTransform3D.Rotation>
-                        </RotateTransform3D>
-
-                        <!-- 2. Then rotate 90° around X to bring +Z forward and +X down -->
-                        <RotateTransform3D>
-                            <RotateTransform3D.Rotation>
-                                <AxisAngleRotation3D Axis="1,0,0" Angle="90"/>
-                            </RotateTransform3D.Rotation>
-                        </RotateTransform3D>
-
-                        <!-- 3. Apply live orientation from IMU -->
-                        <RotateTransform3D>
-                            <RotateTransform3D.Rotation>
-                                <QuaternionRotation3D Quaternion="{Binding Orientation}" />
-                            </RotateTransform3D.Rotation>
-                        </RotateTransform3D>
-                    </Transform3DGroup>
-                </ModelVisual3D.Transform>
-
-
-
-
-                <ModelVisual3D.Content>
-                    <Model3DGroup>
-                        <GeometryModel3D x:Name="CubeModel">
-                            <GeometryModel3D.Geometry>
-                                <MeshGeometry3D 
-                            Positions="-0.5,-0.5,-0.5 0.5,-0.5,-0.5 0.5,0.5,-0.5 -0.5,0.5,-0.5 -0.5,-0.5,0.5 0.5,-0.5,0.5 0.5,0.5,0.5 -0.5,0.5,0.5"
-                            TriangleIndices="0 1 2 0 2 3 4 5 6 4 6 7 0 1 5 0 5 4 2 3 7 2 7 6 0 3 7 0 7 4 1 2 6 1 6 5" />
-                            </GeometryModel3D.Geometry>
-                            <GeometryModel3D.Material>
-                                <DiffuseMaterial Brush="RoyalBlue" />
-                            </GeometryModel3D.Material>
-                        </GeometryModel3D>
-                    </Model3DGroup>
-                </ModelVisual3D.Content>
-            </ModelVisual3D>
-        </HelixToolkit:HelixViewport3D>
-
-        <!-- Row 1 Buttons -->
-        <Button x:Name="btnScan"
-                Content="Scan"
-                Command="{Binding ScanCommand}"
-                Canvas.Left="10" Canvas.Top="10"
-                Width="100" Height="30"/>
-        <Button x:Name="btnConnect"
-                Content="Connect"
-                Command="{Binding ConnectCommand}"
-                Canvas.Left="120" Canvas.Top="10"
-                Width="100" Height="30"/>
-        <Button x:Name="btnSyncRTC"
-                Content="Sync RTC"
-                Command="{Binding SyncRTCCommand}"
-                Canvas.Left="230" Canvas.Top="10"
-                Width="100" Height="30"/>
-        <Button x:Name="btnHardwareInfo"
-                Content="Hardware Info"
-                Command="{Binding HardwareInfoCommand}"
-                Canvas.Left="340" Canvas.Top="10"
-                Width="100" Height="30"/>
-        <Button x:Name="btnStartActivity"
-                Content="Start Activity"
-                Command="{Binding StartActivityCommand}"
-                Canvas.Left="450" Canvas.Top="10"
-                Width="120" Height="30"/>
-        <Button Canvas.Left="587" Canvas.Top="5"
-                Width="150" Height="40"
-                Content="Factory Cal" 
-                Command="{Binding FactoryCalCommand}" />
-
-        <!-- Row 2 Buttons -->
-        <Button x:Name="btnStopActivity"
-                Content="Stop Activity"
-                Command="{Binding StopActivityCommand}"
-                Canvas.Left="10" Canvas.Top="50"
-                Width="120" Height="30"/>
-        <Button x:Name="btnListFiles"
-                Content="List Files"
-                Command="{Binding ListFilesCommand}"
-                Canvas.Left="140" Canvas.Top="50"
-                Width="100" Height="30"/>
-        <Button x:Name="btnDownloadAll"
-                Content="Download All"
-                Command="{Binding DownloadAllCommand}"
-                Canvas.Left="250" Canvas.Top="50"
-                Width="120" Height="30"/>
-        <Button x:Name="btnStartStretch"
-                Content="Start Stretch"
-                Command="{Binding StartStretchCommand}"
-                Canvas.Left="380" Canvas.Top="50"
-                Width="120" Height="30"/>
-        <Button x:Name="btnStopStretch"
-                Content="Stop Stretch"
-                Command="{Binding StopStretchCommand}"
-                Canvas.Left="510" Canvas.Top="50"
-                Width="120" Height="30"/>
-        <Button x:Name="btnEraseFiles"
-                Content="Erase Files"
-                Command="{Binding EraseFilesCommand}"
-                Canvas.Left="640" Canvas.Top="50"
-                Width="120" Height="30"/>
 
         <!-- Devices List -->
-        <ListBox x:Name="lbDevices"
-                 ItemsSource="{Binding Devices}"
-                 SelectedItem="{Binding SelectedDevice}"
-                 Canvas.Left="10" Canvas.Top="100"
-                 Width="410" Height="200">
-            <ListBox.ItemTemplate>
-                <DataTemplate>
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="{Binding Name}" FontWeight="Bold"/>
-                        <TextBlock Text=" "/>
-                        <TextBlock Text="{Binding Rssi}" Foreground="Gray"/>
-                        <TextBlock Text=" dBm" Foreground="Gray"/>
+        <GroupBox Grid.Row="1" Grid.Column="0" Header="Available Devices" Margin="10,5,10,5">
+            <ListBox x:Name="lbDevices" ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice}"
+                     Height="150" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     Background="White" BorderThickness="0">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Orientation="Horizontal" Margin="5,3">
+                            <TextBlock Text="{Binding Name}" FontWeight="Bold" MinWidth="120" 
+                                       Foreground="#333333"/>
+                            <TextBlock Text="{Binding Rssi}" Foreground="#666666" Margin="5,0,0,0"/>
+                            <TextBlock Text=" dBm" Foreground="#666666"/>
+                            <TextBlock Text="  •  " Foreground="#999999"/>
+                            <TextBlock Foreground="#666666" 
+                                       Text="{Binding BatteryPercent, TargetNullValue=Battery —, StringFormat=Battery {0}%}"/>
+                        </StackPanel>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="Padding" Value="0"/>
+                        <Setter Property="Margin" Value="0"/>
+                        <Setter Property="Background" Value="Transparent"/>
+                        <Style.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Background" Value="#E3F2FD"/>
+                                <Setter Property="Foreground" Value="#1976D2"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#F5F5F5"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </ListBox.ItemContainerStyle>
+            </ListBox>
+        </GroupBox>
 
-                        <!-- separator dot -->
-                        <TextBlock Text="  •  " Foreground="Gray"/>
+        <!-- Log Display -->
+        <GroupBox Grid.Row="2" Grid.Column="0" Header="System Logs" Margin="10,5,10,5">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
 
-                        <!-- Battery shown only for the connected device (null until connected) -->
-                        <TextBlock
-                Foreground="Gray"
-                Text="{Binding BatteryPercent,
-                               TargetNullValue=Battery —,
-                               StringFormat=Battery {0}%}"/>
-                    </StackPanel>
-                </DataTemplate>
-            </ListBox.ItemTemplate>
-        </ListBox>
+                <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                              Background="White" BorderThickness="1" BorderBrush="#CCCCCC">
+                    <TextBlock Text="{Binding LogMessages}" Foreground="#333333" FontSize="11" 
+                               FontFamily="Consolas" TextWrapping="Wrap" Margin="5"/>
+                </ScrollViewer>
 
-        <!-- Live Extended‑Mode Metrics -->
-        <TextBlock Canvas.Left="544" Canvas.Top="379"  Text="Counter:" FontWeight="Bold" HorizontalAlignment="Left" VerticalAlignment="Center"/>
-        <TextBlock Canvas.Left="664" Canvas.Top="379"  Text="{Binding LatestCounter}" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                <Button Grid.Row="1" Content="Clear Logs" Command="{Binding ClearLogsCommand}"
+                        Width="80" Height="25" HorizontalAlignment="Right" Margin="0,5,0,0"
+                        Background="#F44336" Foreground="White" BorderThickness="0"/>
+            </Grid>
+        </GroupBox>
 
-        <TextBlock Canvas.Left="544" Canvas.Top="409" Text="Chest:" FontWeight="Bold" HorizontalAlignment="Left" VerticalAlignment="Center"/>
-        <TextBlock Canvas.Left="664" Canvas.Top="409" Text="{Binding LatestChestRaw}" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+        <!-- Data Display Section -->
+        <ScrollViewer Grid.Row="3" Grid.Column="0" VerticalScrollBarVisibility="Auto" Margin="10,5,10,10">
+            <StackPanel>
+                <!-- Live Metrics -->
+                <GroupBox Header="Live Metrics" Margin="0,0,0,10">
+                    <Grid Margin="5">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="120"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
 
-        <TextBlock Canvas.Left="544" Canvas.Top="439" Text="Chest Filtered:" FontWeight="Bold" HorizontalAlignment="Left" VerticalAlignment="Center"/>
-        <TextBlock Canvas.Left="664" Canvas.Top="439" Text="{Binding LatestChestNormalized}" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Counter:" FontWeight="Bold" Margin="0,2"/>
+                        <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding LatestCounter}" Margin="5,2"/>
 
-        <TextBlock Canvas.Left="544" Canvas.Top="469" Text="Accelerometer:" FontWeight="Bold" HorizontalAlignment="Left" VerticalAlignment="Center"/>
-        <TextBlock Canvas.Left="664" Canvas.Top="469" Text="{Binding LatestAccelerometer}" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Chest Raw:" FontWeight="Bold" Margin="0,2"/>
+                        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding LatestChestRaw}" Margin="5,2"/>
 
-        <TextBlock Canvas.Left="544" Canvas.Top="499" Text="Gyroscope:" FontWeight="Bold" HorizontalAlignment="Left" VerticalAlignment="Center"/>
-        <TextBlock Canvas.Left="664" Canvas.Top="499" Text="{Binding LatestGyroscope}" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Chest Filtered:" FontWeight="Bold" Margin="0,2"/>
+                        <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding LatestChestNormalized}" Margin="5,2"/>
 
-        <TextBlock Canvas.Left="544" Canvas.Top="529" Text="Player Load:" FontWeight="Bold" HorizontalAlignment="Left" VerticalAlignment="Center"/>
-        <TextBlock Canvas.Left="664" Canvas.Top="529" Text="{Binding LatestPlayerLoad}" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Accelerometer:" FontWeight="Bold" Margin="0,2"/>
+                        <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding LatestAccelerometer}" Margin="5,2"/>
 
-        <TextBlock Canvas.Left="544" Canvas.Top="559" Text="Pressure:" FontWeight="Bold" HorizontalAlignment="Left" VerticalAlignment="Center"/>
-        <TextBlock Canvas.Left="664" Canvas.Top="559" Text="{Binding LatestPressure}" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Gyroscope:" FontWeight="Bold" Margin="0,2"/>
+                        <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding LatestGyroscope}" Margin="5,2"/>
 
-        <TextBlock Canvas.Left="544" Canvas.Top="589" Text="Temperature:" FontWeight="Bold" HorizontalAlignment="Left" VerticalAlignment="Center"/>
-        <TextBlock Canvas.Left="664" Canvas.Top="589" Text="{Binding LatestTemperature}" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                        <TextBlock Grid.Row="5" Grid.Column="0" Text="Player Load:" FontWeight="Bold" Margin="0,2"/>
+                        <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding LatestPlayerLoad}" Margin="5,2"/>
 
-        <!-- Realtime Stretch Chart -->
-        <lvc:CartesianChart
-        Series="{Binding StretchSeries}"
-        XAxes="{Binding StretchXAxes}"
-        YAxes="{Binding StretchYAxes}"
-        Canvas.Left="1009" Canvas.Top="10"
-        Width="397" Height="200"
-        Background="#FF222222"/>
+                        <TextBlock Grid.Row="6" Grid.Column="0" Text="Pressure:" FontWeight="Bold" Margin="0,2"/>
+                        <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding LatestPressure}" Margin="5,2"/>
 
-        <!-- Chest (raw scatter + filtered line) -->
-        <lvc:CartesianChart
-        Series="{Binding ChestSeries}"
-        XAxes="{Binding ChestXAxes}"
-        YAxes="{Binding ChestYAxes}"
-        Canvas.Left="806" Canvas.Top="231"
-        Width="600" Height="200" Background="Black"/>
+                        <TextBlock Grid.Row="7" Grid.Column="0" Text="Temperature:" FontWeight="Bold" Margin="0,2"/>
+                        <TextBlock Grid.Row="7" Grid.Column="1" Text="{Binding LatestTemperature}" Margin="5,2"/>
 
-        <!-- Accelerometer -->
-        <lvc:CartesianChart
-        Series="{Binding AccSeries}"
-        XAxes="{Binding AccXAxes}"
-        YAxes="{Binding AccYAxes}"
-        Canvas.Left="806" Canvas.Top="451"
-        Width="600" Height="200" Background="Black"/>
+                        <TextBlock Grid.Row="8" Grid.Column="0" Text="Stretch:" FontWeight="Bold" Margin="0,2"/>
+                        <TextBlock Grid.Row="8" Grid.Column="1" Text="{Binding LatestStretch}" Margin="5,2"/>
 
-        <!-- Gyroscope -->
-        <lvc:CartesianChart
-        Series="{Binding GyrSeries}"
-        XAxes="{Binding GyrXAxes}"
-        YAxes="{Binding GyrYAxes}"
-        Canvas.Left="806" Canvas.Top="674"
-        Width="600" Height="200" Background="Black"/>
+                        <TextBlock Grid.Row="9" Grid.Column="0" Text="Heart Rate:" FontWeight="Bold" Margin="0,2"/>
+                        <TextBlock Grid.Row="9" Grid.Column="1" Text="{Binding LatestHeartRate}" Margin="5,2"/>
+                    </Grid>
+                </GroupBox>
 
-        <!-- Log Output -->
-    </Canvas>
+                <!-- Breathing Data -->
+                <GroupBox Header="Breathing Data" Margin="0,0,0,10">
+                    <Grid Margin="5">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="120"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Counter:" FontWeight="Bold" Margin="0,2"/>
+                        <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding LatestBreathCounter}" Margin="5,2"/>
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Raw BR Interval:" FontWeight="Bold" Margin="0,2"/>
+                        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding LatestRawBRInterval}" Margin="5,2"/>
+
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Proc BR Interval:" FontWeight="Bold" Margin="0,2"/>
+                        <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding LatestProcessedBRInterval}" Margin="5,2"/>
+
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="Raw Tidal Volume:" FontWeight="Bold" Margin="0,2"/>
+                        <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding LatestRawTidalVolume}" Margin="5,2"/>
+
+                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Proc Tidal Volume:" FontWeight="Bold" Margin="0,2"/>
+                        <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding LatestProcessedTidalVolume}" Margin="5,2"/>
+
+                        <TextBlock Grid.Row="5" Grid.Column="0" Text="Raw Minute Volume:" FontWeight="Bold" Margin="0,2"/>
+                        <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding LatestRawMinuteVolume}" Margin="5,2"/>
+
+                        <TextBlock Grid.Row="6" Grid.Column="0" Text="Proc Minute Volume:" FontWeight="Bold" Margin="0,2"/>
+                        <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding LatestProcessedMinuteVolume}" Margin="5,2"/>
+                    </Grid>
+                </GroupBox>
+
+                <!-- Breath Timestamps -->
+                <GroupBox Header="Breath Timestamps" Margin="0,0,0,10">
+                    <Grid Margin="5">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="120"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Counter:" FontWeight="Bold" Margin="0,2"/>
+                        <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding LatestBreathTimestampsCounter}" Margin="5,2"/>
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="TV Valley Time:" FontWeight="Bold" Margin="0,2"/>
+                        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding LatestTvValleyTimeIndex}" Margin="5,2"/>
+
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="TV Valley Value:" FontWeight="Bold" Margin="0,2"/>
+                        <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding LatestTvValleyValue}" Margin="5,2"/>
+
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="TV Peak Time:" FontWeight="Bold" Margin="0,2"/>
+                        <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding LatestTvPeakTimeIndex}" Margin="5,2"/>
+
+                        <TextBlock Grid.Row="4" Grid.Column="0" Text="TV Peak Value:" FontWeight="Bold" Margin="0,2"/>
+                        <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding LatestTvPeakValue}" Margin="5,2"/>
+                    </Grid>
+                </GroupBox>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Charts Area -->
+        <Grid Grid.Row="0" Grid.RowSpan="4" Grid.Column="1" Margin="10,10,10,10">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="40*"/>  <!-- 40% - Breathing Metrics -->
+                <RowDefinition Height="30*"/>  <!-- 30% - Chest Data -->
+                <RowDefinition Height="30*"/>  <!-- 30% - IMU Data -->
+            </Grid.RowDefinitions>
+            
+            <!-- Breathing Metrics Charts (40% height) -->
+            <GroupBox Grid.Row="0" Header="Breathing Metrics" Margin="0,0,0,5">
+                <Grid Margin="5">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+        <!-- BR Chart -->
+                    <Border Grid.Column="0" Margin="0,0,2,0" 
+                BorderBrush="Gray" BorderThickness="1" Background="Black">
+                        <Grid>
+            <ContentControl Content="{Binding BRChart}"/>
+                            <TextBlock Text="Breathing Rate (BR)" Foreground="White" 
+                                      Margin="5" FontSize="12" FontWeight="Bold"/>
+                        </Grid>
+        </Border>
+
+        <!-- TV Chart -->
+                    <Border Grid.Column="1" Margin="2,0,2,0" 
+                BorderBrush="Gray" BorderThickness="1" Background="Black">
+                        <Grid>
+            <ContentControl Content="{Binding TVChart}"/>
+                            <TextBlock Text="Tidal Volume (TV)" Foreground="White" 
+                                      Margin="5" FontSize="12" FontWeight="Bold"/>
+                        </Grid>
+        </Border>
+
+        <!-- MV Chart -->
+                    <Border Grid.Column="2" Margin="2,0,0,0" 
+                BorderBrush="Gray" BorderThickness="1" Background="Black">
+                        <Grid>
+            <ContentControl Content="{Binding MVChart}"/>
+                            <TextBlock Text="Minute Ventilation (MV)" Foreground="White" 
+                                      Margin="5" FontSize="12" FontWeight="Bold"/>
+            </Grid>
+        </Border>
+                </Grid>
+            </GroupBox>
+            
+            <!-- Chest Data Charts (30% height) -->
+            <GroupBox Grid.Row="1" Header="Chest Data" Margin="0,5,0,5">
+                <Grid Margin="5">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    
+                    <!-- Chest Normalized Chart -->
+                    <Border Grid.Column="0" Margin="0,0,2,0" 
+                            BorderBrush="Gray" BorderThickness="1" Background="Black">
+            <Grid>
+                <ContentControl Content="{Binding ChestNormChart}"/>
+                <TextBlock Text="Chest Normalized / Stretch" Foreground="Orange" 
+                          Margin="5" FontSize="11" FontWeight="Bold"/>
+            </Grid>
+        </Border>
+
+                    <!-- Chest Raw Chart -->
+                    <Border Grid.Column="1" Margin="2,0,0,0" 
+                BorderBrush="Gray" BorderThickness="1" Background="Black">
+            <Grid>
+                            <ContentControl Content="{Binding ChestRawChart}"/>
+                            <TextBlock Text="Chest Raw" Foreground="Red" 
+                                      Margin="5" FontSize="11" FontWeight="Bold"/>
+            </Grid>
+        </Border>
+                </Grid>
+            </GroupBox>
+            
+            <!-- IMU Data Charts (30% height) -->
+            <GroupBox Grid.Row="2" Header="IMU Data" Margin="0,5,0,0">
+                <Grid Margin="5">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    
+                    <!-- Accelerometer Charts -->
+                    <Border Grid.Row="0" Grid.Column="0" Margin="0,0,2,2" 
+                            BorderBrush="Yellow" BorderThickness="1" Background="Black">
+            <Grid>
+                <ContentControl Content="{Binding AccXChart}"/>
+                            <TextBlock Text="Acc X" Foreground="Yellow" 
+                          Margin="5" FontSize="10" FontWeight="Bold"/>
+            </Grid>
+        </Border>
+
+                    <Border Grid.Row="0" Grid.Column="1" Margin="2,0,2,2" 
+                            BorderBrush="Cyan" BorderThickness="1" Background="Black">
+            <Grid>
+                <ContentControl Content="{Binding AccYChart}"/>
+                            <TextBlock Text="Acc Y" Foreground="Cyan" 
+                          Margin="5" FontSize="10" FontWeight="Bold"/>
+            </Grid>
+        </Border>
+
+                    <Border Grid.Row="0" Grid.Column="2" Margin="2,0,0,2" 
+                            BorderBrush="Red" BorderThickness="1" Background="Black">
+            <Grid>
+                <ContentControl Content="{Binding AccZChart}"/>
+                            <TextBlock Text="Acc Z" Foreground="Red" 
+                          Margin="5" FontSize="10" FontWeight="Bold"/>
+            </Grid>
+        </Border>
+
+                    <!-- Gyroscope Charts -->
+                    <Border Grid.Row="1" Grid.Column="0" Margin="0,2,2,0" 
+                            BorderBrush="Yellow" BorderThickness="1" Background="Black">
+            <Grid>
+                <ContentControl Content="{Binding GyrXChart}"/>
+                            <TextBlock Text="Gyr X" Foreground="Yellow" 
+                          Margin="5" FontSize="10" FontWeight="Bold"/>
+            </Grid>
+        </Border>
+
+                    <Border Grid.Row="1" Grid.Column="1" Margin="2,2,2,0" 
+                            BorderBrush="Cyan" BorderThickness="1" Background="Black">
+            <Grid>
+                <ContentControl Content="{Binding GyrYChart}"/>
+                            <TextBlock Text="Gyr Y" Foreground="Cyan" 
+                          Margin="5" FontSize="10" FontWeight="Bold"/>
+            </Grid>
+        </Border>
+
+                    <Border Grid.Row="1" Grid.Column="2" Margin="2,2,0,0" 
+                            BorderBrush="Red" BorderThickness="1" Background="Black">
+            <Grid>
+                <ContentControl Content="{Binding GyrZChart}"/>
+                            <TextBlock Text="Gyr Z" Foreground="Red" 
+                          Margin="5" FontSize="10" FontWeight="Bold"/>
+            </Grid>
+        </Border>
+                </Grid>
+            </GroupBox>
+            </Grid>
+
+            </Grid>
 </Window>
