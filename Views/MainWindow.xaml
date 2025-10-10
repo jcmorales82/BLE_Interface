@@ -6,11 +6,13 @@
         mc:Ignorable="d"
         xmlns:HelixToolkit="http://helix-toolkit.org/wpf"
         Title="BLE Interface" Height="1200" Width="1440"
-        MinHeight="1000" MinWidth="1200">
+        MinHeight="1000" MinWidth="1200"
+        WindowState="Maximized">
 
     <Grid Background="#F5F5F5">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>  <!-- Control Buttons -->
+            <RowDefinition Height="Auto"/>  <!-- Hamburger Button -->
+            <RowDefinition Height="Auto"/>  <!-- Data Storage -->
             <RowDefinition Height="Auto"/>  <!-- Device List -->
             <RowDefinition Height="Auto"/>  <!-- System Logs -->
             <RowDefinition Height="*"/>     <!-- Data Display -->
@@ -22,78 +24,55 @@
         </Grid.ColumnDefinitions>
 
         <!-- Add a subtle separator between panels -->
-        <Rectangle Grid.Row="0" Grid.RowSpan="4" Grid.Column="0" Grid.ColumnSpan="2"
+        <Rectangle Grid.Row="0" Grid.RowSpan="6" Grid.Column="0" Grid.ColumnSpan="2"
                    Width="1" Fill="#CCCCCC" HorizontalAlignment="Right" Margin="0,10,0,10"/>
 
-        <!-- Control Buttons Section -->
-        <GroupBox Grid.Row="0" Grid.Column="0" Header="Device Controls" Margin="10,10,10,5">
+        <!-- Hamburger Button -->
+        <Button x:Name="HamburgerButton" Grid.Row="0" Grid.Column="0" 
+                Click="HamburgerButton_Click"
+                Width="50" Height="50" HorizontalAlignment="Left" Margin="10,5,0,5"
+                Background="#2196F3" Foreground="White" BorderThickness="0"
+                FontSize="24" FontFamily="Segoe UI Symbol" Content="☰"
+                ToolTip="Device Controls">
+            <Button.Style>
+                <Style TargetType="Button">
+                    <Setter Property="Background" Value="#2196F3"/>
+                    <Setter Property="Cursor" Value="Hand"/>
+                    <Style.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Background" Value="#1976D2"/>
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+            </Button.Style>
+        </Button>
+
+        <!-- Data Folder Selection -->
+        <GroupBox Grid.Row="1" Grid.Column="0" Header="Data Storage" Margin="10,10,10,5">
             <StackPanel Margin="5">
-                <!-- Control Buttons Row 1 -->
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
-                    <Button x:Name="btnScan" Content="Scan" Command="{Binding ScanCommand}" 
-                            Width="80" Height="32" Margin="0,0,5,0" 
-                            Background="#4CAF50" Foreground="White" BorderThickness="0"/>
-                    <Button x:Name="btnConnect" Content="Connect" Command="{Binding ConnectCommand}" 
-                            Width="80" Height="32" Margin="0,0,5,0"
-                            Background="#2196F3" Foreground="White" BorderThickness="0"/>
-                    <Button x:Name="btnSyncRTC" Content="Sync RTC" Command="{Binding SyncRTCCommand}" 
-                            Width="80" Height="32" Margin="0,0,5,0"
-                            Background="#FF9800" Foreground="White" BorderThickness="0"/>
-                    <Button x:Name="btnHardwareInfo" Content="Hardware Info" Command="{Binding HardwareInfoCommand}" 
-                            Width="100" Height="32" Margin="0,0,5,0"
-                            Background="#9C27B0" Foreground="White" BorderThickness="0"/>
+                <StackPanel Margin="0,0,0,5">
+                    <TextBlock Text="Save Location:" FontWeight="Bold" Margin="0,0,0,2"/>
+                    <TextBlock Text="{Binding DataFolderDisplayName}" 
+                               Foreground="#666666" FontSize="11" TextWrapping="Wrap" 
+                               TextTrimming="CharacterEllipsis" MaxWidth="350"/>
                 </StackPanel>
-
-                <!-- Control Buttons Row 2 -->
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
-                    <Button x:Name="btnStartActivity" Content="Start Activity" Command="{Binding StartActivityCommand}" 
-                            Width="100" Height="32" Margin="0,0,5,0"
-                            Background="#4CAF50" Foreground="White" BorderThickness="0"/>
-                    <Button x:Name="btnStopActivity" Content="Stop Activity" Command="{Binding StopActivityCommand}" 
-                            Width="100" Height="32" Margin="0,0,5,0"
-                            Background="#F44336" Foreground="White" BorderThickness="0"/>
-                    <Button Content="Factory Cal" Command="{Binding FactoryCalCommand}" 
-                            Width="100" Height="32" Margin="0,0,5,0"
-                            Background="#607D8B" Foreground="White" BorderThickness="0"/>
-                </StackPanel>
-
-                <!-- File Operations Buttons -->
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
-                    <Button x:Name="btnListFiles" Content="List Files" Command="{Binding ListFilesCommand}" 
-                            Width="80" Height="32" Margin="0,0,5,0"
-                            Background="#795548" Foreground="White" BorderThickness="0"/>
-                    <Button x:Name="btnDownloadAll" Content="Download All" Command="{Binding DownloadAllCommand}" 
-                            Width="100" Height="32" Margin="0,0,5,0"
-                            Background="#3F51B5" Foreground="White" BorderThickness="0"/>
-                    <Button x:Name="btnEraseFiles" Content="Erase Files" Command="{Binding EraseFilesCommand}" 
-                            Width="100" Height="32" Margin="0,0,5,0"
-                            Background="#E91E63" Foreground="White" BorderThickness="0"/>
-        </StackPanel>
-
-                <!-- Stretch Control Buttons -->
-                <StackPanel Orientation="Horizontal">
-                    <Button x:Name="btnStartStretch" Content="Start Stretch" Command="{Binding StartStretchCommand}" 
-                            Width="100" Height="32" Margin="0,0,5,0"
-                            Background="#00BCD4" Foreground="White" BorderThickness="0"/>
-                    <Button x:Name="btnStopStretch" Content="Stop Stretch" Command="{Binding StopStretchCommand}" 
-                            Width="100" Height="32" Margin="0,0,5,0"
-                            Background="#FF5722" Foreground="White" BorderThickness="0"/>
-                </StackPanel>
+                <Button Content="Select Folder" Command="{Binding SelectDataFolderCommand}" 
+                        Width="120" Height="28" HorizontalAlignment="Left"
+                        Background="#4CAF50" Foreground="White" BorderThickness="0"/>
             </StackPanel>
         </GroupBox>
 
-
-
         <!-- Devices List -->
-        <GroupBox Grid.Row="1" Grid.Column="0" Header="Available Devices" Margin="10,5,10,5">
+        <GroupBox Grid.Row="2" Grid.Column="0" Header="Available Devices (Double-click or Right-click to Connect)" Margin="10,5,10,5">
             <ListBox x:Name="lbDevices" ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice}"
                      Height="150" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                     Background="White" BorderThickness="0">
+                     Background="White" BorderThickness="0"
+                     MouseDoubleClick="DeviceList_DoubleClick">
                 <ListBox.ItemTemplate>
                     <DataTemplate>
                         <StackPanel Orientation="Horizontal" Margin="5,3">
                             <TextBlock Text="{Binding Name}" FontWeight="Bold" MinWidth="120" 
-                                       Foreground="#333333"/>
+                                       Foreground="{Binding NameColor}"/>
                             <TextBlock Text="{Binding Rssi}" Foreground="#666666" Margin="5,0,0,0"/>
                             <TextBlock Text=" dBm" Foreground="#666666"/>
                             <TextBlock Text="  •  " Foreground="#999999"/>
@@ -107,10 +86,22 @@
                         <Setter Property="Padding" Value="0"/>
                         <Setter Property="Margin" Value="0"/>
                         <Setter Property="Background" Value="Transparent"/>
+                        <Setter Property="ContextMenu">
+                            <Setter.Value>
+                                <ContextMenu DataContext="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource Self}}">
+                                    <MenuItem Header="Connect" 
+                                              Command="{Binding ConnectDeviceCommand}"
+                                              CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                                    <MenuItem Header="Disconnect" 
+                                              Command="{Binding DisconnectDeviceCommand}"
+                                              CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                                </ContextMenu>
+                            </Setter.Value>
+                        </Setter>
+                        <Setter Property="Tag" Value="{Binding DataContext, RelativeSource={RelativeSource AncestorType=ListBox}}"/>
                         <Style.Triggers>
                             <Trigger Property="IsSelected" Value="True">
                                 <Setter Property="Background" Value="#E3F2FD"/>
-                                <Setter Property="Foreground" Value="#1976D2"/>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter Property="Background" Value="#F5F5F5"/>
@@ -122,16 +113,16 @@
         </GroupBox>
 
         <!-- Log Display -->
-        <GroupBox Grid.Row="2" Grid.Column="0" Header="System Logs" Margin="10,5,10,5">
+        <GroupBox Grid.Row="3" Grid.Column="0" Header="System Logs" Margin="10,5,10,5">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                <ScrollViewer x:Name="LogScrollViewer" Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
                               Background="White" BorderThickness="1" BorderBrush="#CCCCCC">
-                    <TextBlock Text="{Binding LogMessages}" Foreground="#333333" FontSize="11" 
+                    <TextBlock x:Name="LogTextBlock" Text="{Binding LogMessages}" Foreground="#333333" FontSize="11" 
                                FontFamily="Consolas" TextWrapping="Wrap" Margin="5"/>
                 </ScrollViewer>
 
@@ -142,7 +133,7 @@
         </GroupBox>
 
         <!-- Data Display Section -->
-        <ScrollViewer Grid.Row="3" Grid.Column="0" VerticalScrollBarVisibility="Auto" Margin="10,5,10,10">
+        <ScrollViewer Grid.Row="4" Grid.Column="0" VerticalScrollBarVisibility="Auto" Margin="10,5,10,10">
             <StackPanel>
                 <!-- Live Metrics -->
                 <GroupBox Header="Live Metrics" Margin="0,0,0,10">
@@ -270,8 +261,8 @@
             </StackPanel>
         </ScrollViewer>
 
-        <!-- Charts Area -->
-        <Grid Grid.Row="0" Grid.RowSpan="4" Grid.Column="1" Margin="10,10,10,10">
+        <!-- Charts Area (RIGHT SIDE - LOCKED, NO CHANGES) -->
+        <Grid Grid.Row="0" Grid.RowSpan="5" Grid.Column="1" Margin="10,10,10,10">
             <Grid.RowDefinitions>
                 <RowDefinition Height="40*"/>  <!-- 40% - Breathing Metrics -->
                 <RowDefinition Height="30*"/>  <!-- 30% - Chest Data -->
@@ -420,6 +411,399 @@
                 </Grid>
             </GroupBox>
             </Grid>
+
+        <!-- Drawer Overlay (for click-outside-to-close) -->
+        <Border x:Name="DrawerOverlay" Grid.Row="0" Grid.RowSpan="5" Grid.Column="0" Grid.ColumnSpan="2"
+                Background="Black" Opacity="0" Visibility="Collapsed"
+                MouseDown="DrawerOverlay_MouseDown" Panel.ZIndex="100"/>
+
+        <!-- Sliding Drawer Panel -->
+        <Border x:Name="DrawerPanel" Grid.Row="0" Grid.RowSpan="5" Grid.Column="0"
+                Width="280" HorizontalAlignment="Left" 
+                Background="White" BorderBrush="#999999" BorderThickness="0,0,1,0"
+                Visibility="Collapsed" Panel.ZIndex="101">
+            <Border.RenderTransform>
+                <TranslateTransform x:Name="DrawerTransform" X="-280"/>
+            </Border.RenderTransform>
+            <Border.Effect>
+                <DropShadowEffect Color="Black" Direction="0" ShadowDepth="5" Opacity="0.3" BlurRadius="10"/>
+            </Border.Effect>
+
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- Drawer Header -->
+                <Border Grid.Row="0" Background="#2196F3" Height="50">
+                    <Grid>
+                        <TextBlock Text="Device Controls" Foreground="White" FontSize="16" FontWeight="Bold"
+                                   VerticalAlignment="Center" Margin="15,0,0,0"/>
+                        <Button x:Name="CloseDrawerButton" Content="✕" 
+                                Click="CloseDrawerButton_Click"
+                                Width="40" Height="40" HorizontalAlignment="Right"
+                                Background="Transparent" Foreground="White" BorderThickness="0"
+                                FontSize="20" FontWeight="Bold" Cursor="Hand">
+                            <Button.Style>
+                                <Style TargetType="Button">
+                                    <Setter Property="Background" Value="Transparent"/>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#1976D2"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                    </Grid>
+                </Border>
+
+                <!-- Drawer Content -->
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="15">
+                        
+                        <!-- Basic Controls Card -->
+                        <Border Background="#F8F8F8" CornerRadius="8" Padding="12" Margin="0,0,0,12">
+                            <StackPanel>
+                                <TextBlock Text="BASIC CONTROLS" FontWeight="SemiBold" FontSize="11" 
+                                           Foreground="#555" Margin="0,0,0,10"/>
+                                
+                                <!-- Primary: Scan -->
+                                <Button x:Name="btnScan" Content="Scan" Command="{Binding ScanCommand}" 
+                                        Click="ScanButton_Click"
+                                        Height="32" Margin="0,0,0,6" 
+                                        Background="#4CAF50" Foreground="White" BorderThickness="0"
+                                        FontWeight="Medium" Cursor="Hand" HorizontalAlignment="Stretch">
+                                    <Button.Style>
+                                        <Style TargetType="Button">
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Background="{TemplateBinding Background}" 
+                                                                CornerRadius="6" BorderThickness="0">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                            <Style.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Background" Value="#45A049"/>
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                                
+                                <!-- Primary: Sync RTC -->
+                                <Button x:Name="btnSyncRTC" Content="Sync RTC" Command="{Binding SyncRTCCommand}" 
+                                        Height="32" Margin="0,0,0,6"
+                                        Background="#4CAF50" Foreground="White" BorderThickness="0"
+                                        FontWeight="Medium" Cursor="Hand" HorizontalAlignment="Stretch">
+                                    <Button.Style>
+                                        <Style TargetType="Button">
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Background="{TemplateBinding Background}" 
+                                                                CornerRadius="6" BorderThickness="0">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                            <Style.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Background" Value="#45A049"/>
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                                
+                                <!-- Info: Hardware Info -->
+                                <Button x:Name="btnHardwareInfo" Content="Hardware Info" Command="{Binding HardwareInfoCommand}" 
+                                        Height="32" Margin="0,0,0,0"
+                                        Background="White" Foreground="#607D8B" 
+                                        BorderBrush="#607D8B" BorderThickness="1.5"
+                                        FontWeight="Medium" Cursor="Hand" HorizontalAlignment="Stretch">
+                                    <Button.Style>
+                                        <Style TargetType="Button">
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Background="{TemplateBinding Background}" 
+                                                                CornerRadius="6" 
+                                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                                BorderThickness="{TemplateBinding BorderThickness}">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                            <Style.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Background" Value="#F5F5F5"/>
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Activity Controls Card -->
+                        <Border Background="#F8F8F8" CornerRadius="8" Padding="12" Margin="0,0,0,12">
+                            <StackPanel>
+                                <TextBlock Text="ACTIVITY CONTROLS" FontWeight="SemiBold" FontSize="11" 
+                                           Foreground="#555" Margin="0,0,0,10"/>
+                                
+                                <!-- Primary: Start Activity -->
+                                <Button x:Name="btnStartActivity" Content="Start Activity" Command="{Binding StartActivityCommand}" 
+                                        Height="32" Margin="0,0,0,6"
+                                        Background="#4CAF50" Foreground="White" BorderThickness="0"
+                                        FontWeight="Medium" Cursor="Hand" HorizontalAlignment="Stretch">
+                                    <Button.Style>
+                                        <Style TargetType="Button">
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Background="{TemplateBinding Background}" 
+                                                                CornerRadius="6" BorderThickness="0">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                            <Style.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Background" Value="#45A049"/>
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                                
+                                <!-- Stop: Stop Activity -->
+                                <Button x:Name="btnStopActivity" Content="Stop Activity" Command="{Binding StopActivityCommand}" 
+                                        Height="32" Margin="0,0,0,6"
+                                        Background="White" Foreground="#E53935" 
+                                        BorderBrush="#E53935" BorderThickness="1.5"
+                                        FontWeight="Medium" Cursor="Hand" HorizontalAlignment="Stretch">
+                                    <Button.Style>
+                                        <Style TargetType="Button">
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Background="{TemplateBinding Background}" 
+                                                                CornerRadius="6" 
+                                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                                BorderThickness="{TemplateBinding BorderThickness}">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                            <Style.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Background" Value="#FFEBEE"/>
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                                
+                                <!-- Info: Factory Cal -->
+                                <Button Content="Factory Calibration" Command="{Binding FactoryCalCommand}" 
+                                        Height="32" Margin="0,0,0,0"
+                                        Background="White" Foreground="#607D8B" 
+                                        BorderBrush="#607D8B" BorderThickness="1.5"
+                                        FontWeight="Medium" Cursor="Hand" HorizontalAlignment="Stretch">
+                                    <Button.Style>
+                                        <Style TargetType="Button">
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Background="{TemplateBinding Background}" 
+                                                                CornerRadius="6" 
+                                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                                BorderThickness="{TemplateBinding BorderThickness}">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                            <Style.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Background" Value="#F5F5F5"/>
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- File Operations Card -->
+                        <Border Background="#F8F8F8" CornerRadius="8" Padding="12" Margin="0,0,0,12">
+                            <StackPanel>
+                                <TextBlock Text="FILE OPERATIONS" FontWeight="SemiBold" FontSize="11" 
+                                           Foreground="#555" Margin="0,0,0,10"/>
+                                
+                                <!-- Info: List Files -->
+                                <Button x:Name="btnListFiles" Content="List Files" Command="{Binding ListFilesCommand}" 
+                                        Height="32" Margin="0,0,0,6"
+                                        Background="White" Foreground="#607D8B" 
+                                        BorderBrush="#607D8B" BorderThickness="1.5"
+                                        FontWeight="Medium" Cursor="Hand" HorizontalAlignment="Stretch">
+                                    <Button.Style>
+                                        <Style TargetType="Button">
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Background="{TemplateBinding Background}" 
+                                                                CornerRadius="6" 
+                                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                                BorderThickness="{TemplateBinding BorderThickness}">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                            <Style.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Background" Value="#F5F5F5"/>
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                                
+                                <!-- Primary: Download All -->
+                                <Button x:Name="btnDownloadAll" Content="Download All" Command="{Binding DownloadAllCommand}" 
+                                        Height="32" Margin="0,0,0,6"
+                                        Background="#4CAF50" Foreground="White" BorderThickness="0"
+                                        FontWeight="Medium" Cursor="Hand" HorizontalAlignment="Stretch">
+                                    <Button.Style>
+                                        <Style TargetType="Button">
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Background="{TemplateBinding Background}" 
+                                                                CornerRadius="6" BorderThickness="0">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                            <Style.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Background" Value="#45A049"/>
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                                
+                                <!-- Destructive: Erase Files -->
+                                <Button x:Name="btnEraseFiles" Content="Erase Files" Command="{Binding EraseFilesCommand}" 
+                                        Height="32" Margin="0,0,0,0"
+                                        Background="White" Foreground="#FF6F00" 
+                                        BorderBrush="#FF6F00" BorderThickness="1.5"
+                                        FontWeight="Medium" Cursor="Hand" HorizontalAlignment="Stretch">
+                                    <Button.Style>
+                                        <Style TargetType="Button">
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Background="{TemplateBinding Background}" 
+                                                                CornerRadius="6" 
+                                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                                BorderThickness="{TemplateBinding BorderThickness}">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                            <Style.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Background" Value="#FFF3E0"/>
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Stretch Controls Card -->
+                        <Border Background="#F8F8F8" CornerRadius="8" Padding="12" Margin="0,0,0,12">
+                            <StackPanel>
+                                <TextBlock Text="STRETCH CONTROLS" FontWeight="SemiBold" FontSize="11" 
+                                           Foreground="#555" Margin="0,0,0,10"/>
+                                
+                                <!-- Primary: Start Stretch -->
+                                <Button x:Name="btnStartStretch" Content="Start Stretch" Command="{Binding StartStretchCommand}" 
+                                        Height="32" Margin="0,0,0,6"
+                                        Background="#4CAF50" Foreground="White" BorderThickness="0"
+                                        FontWeight="Medium" Cursor="Hand" HorizontalAlignment="Stretch">
+                                    <Button.Style>
+                                        <Style TargetType="Button">
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Background="{TemplateBinding Background}" 
+                                                                CornerRadius="6" BorderThickness="0">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                            <Style.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Background" Value="#45A049"/>
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                                
+                                <!-- Stop: Stop Stretch -->
+                                <Button x:Name="btnStopStretch" Content="Stop Stretch" Command="{Binding StopStretchCommand}" 
+                                        Height="32" Margin="0,0,0,0"
+                                        Background="White" Foreground="#E53935" 
+                                        BorderBrush="#E53935" BorderThickness="1.5"
+                                        FontWeight="Medium" Cursor="Hand" HorizontalAlignment="Stretch">
+                                    <Button.Style>
+                                        <Style TargetType="Button">
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Background="{TemplateBinding Background}" 
+                                                                CornerRadius="6" 
+                                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                                BorderThickness="{TemplateBinding BorderThickness}">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                            <Style.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Background" Value="#FFEBEE"/>
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                            </StackPanel>
+                        </Border>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+        </Border>
 
             </Grid>
 </Window>

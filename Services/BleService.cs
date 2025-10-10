@@ -33,6 +33,8 @@ namespace BLE_Interface.Services
         private BatteryServiceSession _batterySession;
         private BatteryLogger _batteryLogger;
         private DateTime? _batteryStartTime;
+        private bool _isDisconnecting;
+        private bool _isManualDisconnect;
 
         private readonly SemaphoreSlim _connectionLock = new SemaphoreSlim(1, 1);
 
@@ -60,6 +62,10 @@ namespace BLE_Interface.Services
 
         // Stretch streaming
         private FileStream _stretchStream;
+
+        // Extended data logging
+        private ExtendedDataLogger _extendedDataLogger;
+        private ProcessedDataLogger _processedDataLogger;
 
         // Events - ALL fire on background threads
         public event Action<string> LogMessage;
@@ -201,25 +207,95 @@ namespace BLE_Interface.Services
 
         public async Task<bool> ConnectAsync(BleDeviceModel deviceModel, CancellationToken ct = default)
         {
+            const int maxRetries = 3;
+            
             await _connectionLock.WaitAsync(ct);
             try
             {
+                // Stop scanning
                 StopScanning();
-                await DisconnectInternalAsync();
+                
+                // Only disconnect if we have an active connection
+                if (_device != null)
+                {
+                    _isManualDisconnect = true;  // Prevent "unexpected disconnect" message
+                    await DisconnectInternalAsync();
+                    _isManualDisconnect = false;
+                    
+                    // Force garbage collection to help release COM objects
+                    GC.Collect();
+                    GC.WaitForPendingFinalizers();
+                    
+                    // Extra delay to ensure Windows releases the connection
+                    await Task.Delay(500, ct);
+                }
+                
+                for (int attempt = 1; attempt <= maxRetries; attempt++)
+                {
+                    if (attempt > 1)
+                    {
+                        Log($"Connection attempt {attempt}/{maxRetries}...");
+                        
+                        // Force cleanup between retries
+                        GC.Collect();
+                        GC.WaitForPendingFinalizers();
+                        
+                        await Task.Delay(1500, ct); // Much longer delay between retries
+                    }
+                    
+                    bool success = await ConnectInternalAsync(deviceModel, ct);
+                    
+                    if (success)
+                    {
+                        if (attempt > 1)
+                        {
+                            Log($"Connected successfully on attempt {attempt}");
+                        }
+                        return true;
+                    }
+                    
+                    // Clean up failed attempt
+                    _isManualDisconnect = true;  // Prevent "unexpected disconnect" message
+                    await DisconnectInternalAsync();
+                    _isManualDisconnect = false;
+                    
+                    // If this wasn't the last attempt, continue to retry
+                    if (attempt < maxRetries)
+                    {
+                        Log($"Connection failed, retrying...");
+                    }
+                }
+                
+                // All attempts failed
+                Log($"Failed to connect after {maxRetries} attempts");
+                return false;
+            }
+            finally
+            {
+                _connectionLock.Release();
+            }
+        }
+
+        private async Task<bool> ConnectInternalAsync(BleDeviceModel deviceModel, CancellationToken ct = default)
+        {
+            try
+            {
+                // Don't disconnect here - already done in ConnectAsync before retry loop
 
                 ulong addr = Convert.ToUInt64(deviceModel.Address, 16);
 
                 _device = await BluetoothLEDevice.FromBluetoothAddressAsync(addr).AsTask(ct);
                 if (_device == null)
                 {
-                    Log("❌ Failed to connect");
                     return false;
                 }
 
                 DeviceAddress = addr;
                 _device.ConnectionStatusChanged += OnConnectionStatusChanged;
 
-                await Task.Delay(200, ct);
+                // Give a moment for device object to initialize
+                // Note: Actual connection happens when we access GATT services
+                await Task.Delay(300, ct);
 
                 var svcResult = await RetryAsync(
                     async () => await _device.GetGattServicesForUuidAsync(CustomServiceUuid, BluetoothCacheMode.Uncached),
@@ -230,12 +306,21 @@ namespace BLE_Interface.Services
 
                 if (svcResult?.Status != GattCommunicationStatus.Success || svcResult.Services.Count == 0)
                 {
-                    Log("❌ Service not found");
                     await DisconnectInternalAsync();
                     return false;
                 }
 
                 var service = svcResult.Services[0];
+                
+                // Give device a moment to be fully ready for characteristic operations
+                await Task.Delay(100, ct);
+                
+                // Verify device is still connected before proceeding
+                if (_device.ConnectionStatus != BluetoothConnectionStatus.Connected)
+                {
+                    await DisconnectInternalAsync();
+                    return false;
+                }
 
                 _dataStreamChar = await SetupCharacteristicAsync(service, DataStreamCharUuid, OnDataStreamChanged, ct);
                 _controlChar = await SetupCharacteristicAsync(service, ControlCharUuid, OnControlChanged, ct);
@@ -243,26 +328,20 @@ namespace BLE_Interface.Services
 
                 if (_dataStreamChar == null || _controlChar == null || _downloadChar == null)
                 {
-                    Log("❌ Failed to setup characteristics");
                     await DisconnectInternalAsync();
                     return false;
                 }
 
                 await SetupBatteryServiceAsync(deviceModel.Name);
 
-                Log($"✅ Connected to {deviceModel.Name}");
+                Log($"Connected to {deviceModel.Name}");
                 DeviceConnected?.Invoke();
                 return true;
             }
-            catch (Exception ex)
+            catch
             {
-                Log($"❌ Connection error: {ex.Message}");
                 await DisconnectInternalAsync();
                 return false;
-            }
-            finally
-            {
-                _connectionLock.Release();
             }
         }
 
@@ -270,9 +349,18 @@ namespace BLE_Interface.Services
         {
             if (sender.ConnectionStatus == BluetoothConnectionStatus.Disconnected)
             {
-                Log("Device disconnected");
-                _ = DisconnectAsync();
-                DeviceDisconnected?.Invoke();
+                // Only log if this is an unexpected disconnect
+                if (!_isManualDisconnect)
+                {
+                    Log("Device disconnected unexpectedly (possible reasons: out of range, device powered off, or connection lost)");
+                }
+                
+                // DisconnectAsync will handle re-entry prevention with _isDisconnecting flag
+                // Pass false to indicate this is NOT a manual disconnect (it's triggered by the OS)
+                _ = Task.Run(async () => 
+                {
+                    await DisconnectAsync(isManual: false);
+                });
             }
         }
 
@@ -286,22 +374,40 @@ namespace BLE_Interface.Services
             {
                 var result = await service.GetCharacteristicsForUuidAsync(charUuid);
                 if (result.Status != GattCommunicationStatus.Success || result.Characteristics.Count == 0)
-                    return null;
-
-                var ch = result.Characteristics[0];
-                ch.ValueChanged += handler;
-
-                var status = await ch.WriteClientCharacteristicConfigurationDescriptorAsync(
-                    GattClientCharacteristicConfigurationDescriptorValue.Notify);
-
-                if (status != GattCommunicationStatus.Success)
                 {
-                    await Task.Delay(100, ct);
-                    await ch.WriteClientCharacteristicConfigurationDescriptorAsync(
-                        GattClientCharacteristicConfigurationDescriptorValue.Notify);
+                    return null;
                 }
 
-                return ch;
+                var ch = result.Characteristics[0];
+                
+                // Remove handler first to prevent duplicate subscriptions on reconnect
+                ch.ValueChanged -= handler;
+                ch.ValueChanged += handler;
+
+                // Retry notification setup with longer delays
+                for (int i = 0; i < 3; i++)
+                {
+                    try
+                    {
+                        var status = await ch.WriteClientCharacteristicConfigurationDescriptorAsync(
+                            GattClientCharacteristicConfigurationDescriptorValue.Notify);
+
+                        if (status == GattCommunicationStatus.Success)
+                        {
+                            return ch;
+                        }
+                        
+                        if (i < 2)
+                            await Task.Delay(300, ct);
+                    }
+                    catch
+                    {
+                        if (i < 2)
+                            await Task.Delay(300, ct);
+                    }
+                }
+                
+                return null;
             }
             catch
             {
@@ -323,25 +429,43 @@ namespace BLE_Interface.Services
             }
             catch (Exception ex)
             {
-                Log($"⚠️ Battery service unavailable: {ex.Message}");
+                Log($"Battery service unavailable: {ex.Message}");
             }
         }
 
-        public async Task DisconnectAsync()
+        public async Task DisconnectAsync(bool isManual = true)
         {
+            // Prevent re-entrant disconnect calls
+            if (_isDisconnecting) return;
+            
             await _connectionLock.WaitAsync();
             try
             {
+                _isDisconnecting = true;
+                _isManualDisconnect = isManual;
+                
                 await DisconnectInternalAsync();
+                
+                // Give BLE stack and device time to fully release resources
+                // This prevents "AccessDenied" errors on immediate reconnection
+                await Task.Delay(1000);
+                
+                // Fire disconnection event for UI update
+                DeviceDisconnected?.Invoke();
             }
             finally
             {
+                _isDisconnecting = false;
+                _isManualDisconnect = false;
                 _connectionLock.Release();
             }
         }
 
         private async Task DisconnectInternalAsync()
         {
+            // Disable notifications on all characteristics before disposing
+            // Small delays between each to let the device process the CCCD writes
+            
             if (_controlChar != null)
             {
                 try
@@ -349,6 +473,7 @@ namespace BLE_Interface.Services
                     _controlChar.ValueChanged -= OnControlChanged;
                     await _controlChar.WriteClientCharacteristicConfigurationDescriptorAsync(
                         GattClientCharacteristicConfigurationDescriptorValue.None);
+                    await Task.Delay(50); // Let device process
                 }
                 catch { }
                 _controlChar = null;
@@ -361,6 +486,7 @@ namespace BLE_Interface.Services
                     _dataStreamChar.ValueChanged -= OnDataStreamChanged;
                     await _dataStreamChar.WriteClientCharacteristicConfigurationDescriptorAsync(
                         GattClientCharacteristicConfigurationDescriptorValue.None);
+                    await Task.Delay(50); // Let device process
                 }
                 catch { }
                 _dataStreamChar = null;
@@ -373,6 +499,7 @@ namespace BLE_Interface.Services
                     _downloadChar.ValueChanged -= OnDownloadChanged;
                     await _downloadChar.WriteClientCharacteristicConfigurationDescriptorAsync(
                         GattClientCharacteristicConfigurationDescriptorValue.None);
+                    await Task.Delay(50); // Let device process
                 }
                 catch { }
                 _downloadChar = null;
@@ -394,7 +521,6 @@ namespace BLE_Interface.Services
         }
 
         // ===== CHARACTERISTIC HANDLERS =====
-
         private async void OnControlChanged(GattCharacteristic sender, GattValueChangedEventArgs args)
         {
             try
@@ -425,12 +551,11 @@ namespace BLE_Interface.Services
                         tcs.TrySetResult(payload);
                     }
                 }
-
                 LogResponse(respCode, tag);
             }
             catch (Exception ex)
             {
-                Log($"⚠️ Control handler error: {ex.Message}");
+                Log($"Control handler error: {ex.Message}");
             }
         }
 
@@ -484,7 +609,7 @@ namespace BLE_Interface.Services
             }
             catch (Exception ex)
             {
-                Log($"⚠️ DataStream error: {ex.Message}");
+                Log($"DataStream error: {ex.Message}");
             }
         }
 
@@ -564,6 +689,9 @@ namespace BLE_Interface.Services
             };
 
             ExtendedDataReceived?.Invoke(ext);
+
+            // Log extended data if logging is active
+            _extendedDataLogger?.Append(ext);
         }
 
         private void ProcessBreathingData(byte[] raw)
@@ -580,6 +708,9 @@ namespace BLE_Interface.Services
             };
 
             BreathDataReceived?.Invoke(breath);
+
+            // Log breathing data if logging is active
+            _processedDataLogger?.AppendSample(breath);
         }
         private void ProcessBreathTimestampsData(byte[] raw)
         {
@@ -593,6 +724,9 @@ namespace BLE_Interface.Services
             };
 
             BreathTimestampsReceived?.Invoke(timestamps);
+
+            // Log breathing timestamps if logging is active
+            _processedDataLogger?.AppendTimestamp(timestamps);
         }
 
         private void ProcessImuData(byte[] raw)
@@ -601,6 +735,9 @@ namespace BLE_Interface.Services
             ushort cadence = BitConverter.ToUInt16(raw, 5);
             uint stepTime = BitConverter.ToUInt32(raw, 7);
             ushort playerLoad = BitConverter.ToUInt16(raw, 11);
+
+            // Log IMU data if logging is active
+            _processedDataLogger?.AppendImuData(counter, cadence, stepTime, playerLoad);
         }
 
         private void ProcessStretchData(byte[] raw)
@@ -642,7 +779,7 @@ namespace BLE_Interface.Services
                 {
                     _downloadWriter?.Close();
                     _downloadWriter = null;
-                    Log("✅ Download complete");
+                    Log("Download complete");
                 }
             });
 
@@ -832,6 +969,134 @@ namespace BLE_Interface.Services
             _stretchStream?.Close();
             _stretchStream = null;
             Log("Stopped stretch stream");
+        }
+
+        public void StartExtendedDataLogging(string deviceName, string customFolderPath = null)
+        {
+            if (_extendedDataLogger != null)
+            {
+                Log("Extended data logging already started");
+                return;
+            }
+
+            try
+            {
+                _extendedDataLogger = new ExtendedDataLogger(deviceName, customFolderPath);
+                Log($"Extended data logging started: {_extendedDataLogger.FilePath}");
+            }
+            catch (Exception ex)
+            {
+                Log($"Failed to start extended data logging: {ex.Message}");
+            }
+        }
+
+        public void StartProcessedDataLogging(string deviceName, string customFolderPath = null)
+        {
+            if (_processedDataLogger != null)
+            {
+                Log("Processed data logging already started");
+                return;
+            }
+
+            try
+            {
+                _processedDataLogger = new ProcessedDataLogger(deviceName, customFolderPath);
+                Log($"Processed data logging started: {_processedDataLogger.FilePath}");
+            }
+            catch (Exception ex)
+            {
+                Log($"Failed to start processed data logging: {ex.Message}");
+            }
+        }
+
+        public void StartDataLogging(string deviceName, string customFolderPath = null)
+        {
+            if (_extendedDataLogger != null || _processedDataLogger != null)
+            {
+                Log("Data logging already started");
+                return;
+            }
+
+            try
+            {
+                // Generate a single timestamp for both loggers
+                var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+                
+                _extendedDataLogger = new ExtendedDataLogger(deviceName, customFolderPath, timestamp);
+                _processedDataLogger = new ProcessedDataLogger(deviceName, customFolderPath, timestamp);
+                
+                Log($"Data logging started:");
+                Log($"  Extended data: {_extendedDataLogger.FilePath}");
+                Log($"  Processed data: {_processedDataLogger.FilePath}");
+            }
+            catch (Exception ex)
+            {
+                Log($"Failed to start data logging: {ex.Message}");
+            }
+        }
+
+        public void StopExtendedDataLogging()
+        {
+            if (_extendedDataLogger == null)
+            {
+                Log("Extended data logging not started");
+                return;
+            }
+
+            try
+            {
+                _extendedDataLogger.Dispose();
+                _extendedDataLogger = null;
+                Log("Extended data logging stopped");
+            }
+            catch (Exception ex)
+            {
+                Log($"Failed to stop extended data logging: {ex.Message}");
+            }
+        }
+
+        public void StopProcessedDataLogging()
+        {
+            if (_processedDataLogger == null)
+            {
+                Log("Processed data logging not started");
+                return;
+            }
+
+            try
+            {
+                _processedDataLogger.Dispose();
+                _processedDataLogger = null;
+                Log("Processed data logging stopped");
+            }
+            catch (Exception ex)
+            {
+                Log($"Failed to stop processed data logging: {ex.Message}");
+            }
+        }
+
+        public void StopDataLogging()
+        {
+            try
+            {
+                if (_extendedDataLogger != null)
+                {
+                    _extendedDataLogger.Dispose();
+                    _extendedDataLogger = null;
+                    Log("Extended data logging stopped");
+                }
+
+                if (_processedDataLogger != null)
+                {
+                    _processedDataLogger.Dispose();
+                    _processedDataLogger = null;
+                    Log("Processed data logging stopped");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"Failed to stop data logging: {ex.Message}");
+            }
         }
 
         // ===== HELPERS =====

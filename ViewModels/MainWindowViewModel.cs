@@ -2,10 +2,12 @@
 using BLE_Interface.Helpers;
 using BLE_Interface.Models;
 using BLE_Interface.Services;
+using BLE_Interface.Properties;
 using SkiaSharp;
 using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
@@ -89,6 +91,7 @@ namespace BLE_Interface.ViewModels
         private string _latestPL = "—";
         private uint _latestPressure;
         private short _latestTemperature;
+        private double _latestAltitude;
         private ushort _latestStretch;
         private ushort _latestHeartRate;
         private ushort _latestBreathingRate;
@@ -229,6 +232,12 @@ namespace BLE_Interface.ViewModels
             set { if (_latestTemperature != value) { _latestTemperature = value; OnPropertyChanged(nameof(LatestTemperature)); } }
         }
 
+        public double LatestAltitude
+        {
+            get => _latestAltitude;
+            set { if (_latestAltitude != value) { _latestAltitude = value; OnPropertyChanged(nameof(LatestAltitude)); } }
+        }
+
         public ushort LatestStretch
         {
             get => _latestStretch;
@@ -253,8 +262,36 @@ namespace BLE_Interface.ViewModels
             set { if (_latestCadence != value) { _latestCadence = value; OnPropertyChanged(nameof(LatestCadence)); } }
         }
 
+        private string _dataFolderPath;
+        public string DataFolderPath
+        {
+            get => _dataFolderPath;
+            set
+            {
+                if (_dataFolderPath != value)
+                {
+                    _dataFolderPath = value;
+                    OnPropertyChanged(nameof(DataFolderPath));
+                    OnPropertyChanged(nameof(DataFolderDisplayName));
+                }
+            }
+        }
+
+        public string DataFolderDisplayName
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(DataFolderPath))
+                    return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads") + " (default)";
+                
+                return DataFolderPath;
+            }
+        }
+
         public ICommand ScanCommand { get; }
         public ICommand ConnectCommand { get; }
+        public ICommand ConnectDeviceCommand { get; }
+        public ICommand DisconnectDeviceCommand { get; }
         public ICommand SyncRTCCommand { get; }
         public ICommand HardwareInfoCommand { get; }
         public ICommand StartActivityCommand { get; }
@@ -266,10 +303,14 @@ namespace BLE_Interface.ViewModels
         public ICommand EraseFilesCommand { get; }
         public ICommand FactoryCalCommand { get; }
         public ICommand ClearLogsCommand { get; }
+        public ICommand SelectDataFolderCommand { get; }
 
         public MainWindowViewModel()
         {
             _bleService = new BleService();
+            
+            // Load saved data folder path
+            DataFolderPath = Settings.Default.DataFolderPath;
 
             _bleService.LogMessage += OnLogMessage;
             _bleService.DeviceConnected += OnDeviceConnected;
@@ -408,6 +449,8 @@ namespace BLE_Interface.ViewModels
 
             ScanCommand = new RelayCommand(_ => StartScan());
             ConnectCommand = new RelayCommand(async _ => await ConnectToDevice(), _ => SelectedDevice != null);
+            ConnectDeviceCommand = new RelayCommand(async param => await ConnectToDeviceAsync(param as BleDeviceModel));
+            DisconnectDeviceCommand = new RelayCommand(async param => await DisconnectFromDeviceAsync(param as BleDeviceModel));
             SyncRTCCommand = new RelayCommand(async _ => await SyncRTC());
             HardwareInfoCommand = new RelayCommand(async _ => await GetHardwareInfo());
             StartActivityCommand = new RelayCommand(async _ => await StartActivity(), _ => SelectedDevice != null);
@@ -419,6 +462,7 @@ namespace BLE_Interface.ViewModels
             EraseFilesCommand = new RelayCommand(async _ => await EraseFiles());
             FactoryCalCommand = new RelayCommand(async _ => await DoFactoryCal());
             ClearLogsCommand = new RelayCommand(_ => ClearLogs());
+            SelectDataFolderCommand = new RelayCommand(_ => SelectDataFolder());
         }
 
         private void Log(string message)
@@ -470,6 +514,24 @@ namespace BLE_Interface.ViewModels
             LogMessages = "";
         }
 
+        private void SelectDataFolder()
+        {
+            using (var dialog = new System.Windows.Forms.FolderBrowserDialog())
+            {
+                dialog.Description = "Select Data Folder";
+                dialog.SelectedPath = !string.IsNullOrEmpty(DataFolderPath) ? DataFolderPath : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                dialog.ShowNewFolderButton = true;
+
+                if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+                {
+                    DataFolderPath = dialog.SelectedPath;
+                    Settings.Default.DataFolderPath = DataFolderPath;
+                    Settings.Default.Save();
+                    Log($"Data folder set to: {DataFolderPath}");
+                }
+            }
+        }
+
         private void OnDeviceDiscovered(BleDeviceModel device)
         {
             Application.Current.Dispatcher.BeginInvoke(new Action(() =>
@@ -480,12 +542,26 @@ namespace BLE_Interface.ViewModels
 
         private void OnDeviceConnected()
         {
-
+            // Update connection state for the selected device
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                if (SelectedDevice != null)
+                {
+                    SelectedDevice.ConnectionState = Models.DeviceConnectionState.Connected;
+                }
+            });
         }
 
         private void OnDeviceDisconnected()
         {
-
+            // Reset connection state for the selected device
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                if (SelectedDevice != null)
+                {
+                    SelectedDevice.ConnectionState = Models.DeviceConnectionState.Disconnected;
+                }
+            });
         }
 
         private void OnBatteryLevelUpdated(int level)
@@ -556,6 +632,7 @@ namespace BLE_Interface.ViewModels
                 }
                 LatestPressure = ext.Pressure;
                 LatestTemperature = ext.Temperature;
+                LatestAltitude = CalculateAltitude(ext.Pressure, ext.Temperature);
             }));
 
             ChestRawChart.AddPoint(ext.TimestampRel, ext.ChestNormalized);
@@ -582,8 +659,64 @@ namespace BLE_Interface.ViewModels
         public async Task ConnectToDevice()
         {
             if (SelectedDevice == null) return;
+            
+            // Set connecting state
+            SelectedDevice.ConnectionState = Models.DeviceConnectionState.Connecting;
+            Log($"Connecting to {SelectedDevice.Name}...");
+            
             bool ok = await _bleService.ConnectAsync(SelectedDevice);
-            if (!ok) Log("Failed to connect");
+            
+            if (ok)
+            {
+                SelectedDevice.ConnectionState = Models.DeviceConnectionState.Connected;
+                // Don't log here - BleService already logs the connection
+            }
+            else
+            {
+                SelectedDevice.ConnectionState = Models.DeviceConnectionState.Disconnected;
+                // BleService already logs the failure after retries
+            }
+        }
+
+        public async Task ConnectToDeviceAsync(BleDeviceModel device)
+        {
+            if (device == null) return;
+
+            // Set connecting state
+            device.ConnectionState = Models.DeviceConnectionState.Connecting;
+            Log($"Connecting to {device.Name}...");
+
+            // Attempt connection
+            bool success = await _bleService.ConnectAsync(device);
+
+            if (success)
+            {
+                device.ConnectionState = Models.DeviceConnectionState.Connected;
+                // Don't log here - BleService already logs the connection
+            }
+            else
+            {
+                device.ConnectionState = Models.DeviceConnectionState.Disconnected;
+                // BleService already logs the failure after retries
+            }
+        }
+
+        public async Task DisconnectFromDeviceAsync(BleDeviceModel device)
+        {
+            if (device == null) return;
+
+            Log($"Disconnecting from {device.Name}...");
+
+            try
+            {
+                await _bleService.DisconnectAsync();
+                device.ConnectionState = Models.DeviceConnectionState.Disconnected;
+                Log($"Disconnected from {device.Name}");
+            }
+            catch (Exception ex)
+            {
+                Log($"Disconnect failed: {ex.Message}");
+            }
         }
 
         public async Task SyncRTC()
@@ -635,6 +768,12 @@ namespace BLE_Interface.ViewModels
 
             try
             {
+                // Start data logging
+                if (SelectedDevice != null)
+                {
+                    _bleService.StartDataLogging(SelectedDevice.Name, DataFolderPath);
+                }
+
                 await _bleService.StartActivityAsync();
                 Log("Activity started");
             }
@@ -646,6 +785,10 @@ namespace BLE_Interface.ViewModels
             try
             {
                 await _bleService.StopActivityAsync();
+                
+                // Stop data logging
+                _bleService.StopDataLogging();
+                
                 Log("Activity stopped");
             }
             catch (Exception ex) { Log($"Stop activity failed: {ex.Message}"); }
@@ -668,7 +811,7 @@ namespace BLE_Interface.ViewModels
             try
             {
                 var files = _bleService.FileList.ToList();
-                Log($"⬇️ Downloading {files.Count} file(s)...");
+                Log($"Downloading {files.Count} file(s)...");
                 foreach (var file in files) await _bleService.DownloadFileAsync(file);
                 Log("All files downloaded");
             }
@@ -731,6 +874,21 @@ namespace BLE_Interface.ViewModels
                 Log("Factory calibration successful");
             }
             catch (Exception ex) { Log($"Factory calibration failed: {ex.Message}"); }
+        }
+
+        /// <summary>
+        /// Calculate altitude from pressure and temperature using barometric formula
+        /// h = 44330 * (1 - (p/p0)^0.1903)
+        /// where p0 = 101325 Pa (standard sea level pressure)
+        /// </summary>
+        private double CalculateAltitude(uint pressurePa, short temperatureC)
+        {
+            const double p0 = 101325.0; // Standard sea level pressure in Pa
+
+            double pressureRatio = pressurePa / p0;
+            double altitude = 44330.0 * (1.0 - Math.Pow(pressureRatio, 0.1903));
+
+            return altitude;
         }
 
         public void Dispose()

@@ -26,5 +26,20 @@ namespace BLE_Interface.Properties
                 return defaultInstance;
             }
         }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string DataFolderPath
+        {
+            get
+            {
+                return ((string)(this["DataFolderPath"]));
+            }
+            set
+            {
+                this["DataFolderPath"] = value;
+            }
+        }
     }
 }
