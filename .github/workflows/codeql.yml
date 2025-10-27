@@ -1,4 +1,5 @@
-name: CodeQL
+name: CodeQL (C#)
+
 on:
   push:
     branches: [ "main" ]
@@ -6,6 +7,7 @@ on:
     branches: [ "main" ]
   schedule:
     - cron: '30 1 * * 0'   # weekly
+  workflow_dispatch:
 
 jobs:
   analyze:
@@ -14,11 +16,42 @@ jobs:
       actions: read
       contents: read
       security-events: write
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: github/codeql-action/init@v3
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # For .NET Framework/WPF solutions (MSBuild, not 'dotnet build')
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup NuGet
+        uses: NuGet/setup-nuget@v2
+
+      # Optional cache to speed up restores
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.sln', '**/packages.config') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      # Restore & build YOUR solution (adjust path if not in repo root)
+      - name: Restore packages
+        run: nuget restore BLE_Interface.sln
+
+      - name: Initialize CodeQL (manual build mode)
+        uses: github/codeql-action/init@v3
         with:
           languages: csharp
-      # If autobuild fails for .NET Framework, replace the next two steps with the fallback below.
-      - uses: github/codeql-action/autobuild@v3
-      - uses: github/codeql-action/analyze@v3
+          build-mode: manual
+          # queries: security-extended,security-and-quality  # (optional)
+
+      - name: Build solution (Release)
+        run: msbuild BLE_Interface.sln /t:Rebuild /p:Configuration=Release /m
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:csharp"
